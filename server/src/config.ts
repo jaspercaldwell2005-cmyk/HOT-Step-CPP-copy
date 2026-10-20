@@ -291,6 +291,11 @@ export const config = {
     unslothBaseUrl: process.env.UNSLOTH_BASE_URL || 'http://127.0.0.1:8888',
     unslothUsername: process.env.UNSLOTH_USERNAME || '',
     unslothPassword: process.env.UNSLOTH_PASSWORD || '',
+    // Opt-in for a local Studio running with its "keyless API access" setting
+    // enabled (off by default in Studio): /v1 then needs no username/password.
+    // Must be set explicitly — the loopback default URL alone must never make
+    // the provider look installed on a fresh checkout.
+    unslothKeyless: (process.env.UNSLOTH_KEYLESS ?? '0') !== '0',
     defaultProvider: process.env.DEFAULT_LLM_PROVIDER || 'gemini',
     geminiModel: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
     openaiModel: process.env.OPENAI_MODEL || 'gpt-4o-mini',
@@ -483,6 +488,8 @@ export function reloadEnvConfig(): string[] {
     () => config.lireek.unslothUsername);
   apply('UNSLOTH_PASSWORD', v => { config.lireek.unslothPassword = v; },
     () => config.lireek.unslothPassword);
+  apply('UNSLOTH_KEYLESS', v => { config.lireek.unslothKeyless = (v || '0') !== '0'; },
+    () => (config.lireek.unslothKeyless ? '1' : '0'));
   apply('DEFAULT_LLM_PROVIDER', v => { config.lireek.defaultProvider = v || 'gemini'; },
     () => config.lireek.defaultProvider);
   apply('GEMINI_MODEL', v => { config.lireek.geminiModel = v || 'gemini-2.5-flash'; },
