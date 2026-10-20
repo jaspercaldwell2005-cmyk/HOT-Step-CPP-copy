@@ -388,7 +388,7 @@ export const EXPOSED_ENV_KEYS = [
   'OLLAMA_MODEL', 'LMSTUDIO_MODEL', 'UNSLOTH_MODEL',
   // LLM endpoints
   'OLLAMA_BASE_URL', 'LMSTUDIO_BASE_URL', 'LMSTUDIO_API_KEY',
-  'UNSLOTH_BASE_URL', 'UNSLOTH_USERNAME', 'UNSLOTH_PASSWORD',
+  'UNSLOTH_BASE_URL', 'UNSLOTH_USERNAME', 'UNSLOTH_PASSWORD', 'UNSLOTH_KEYLESS',
   'LLAMACPP_BASE_URL', 'LLAMACPP_MODEL',
   'OPENAI_COMPAT_BASE_URL', 'OPENAI_COMPAT_API_KEY', 'OPENAI_COMPAT_MODEL', 'OPENAI_COMPAT_NAME',
   'OPENAI_COMPAT_REASONING_EFFORT',
@@ -431,13 +431,15 @@ export function reloadEnvConfig(): string[] {
   const parsed = dotenvParse(envContent);
   const changed: string[] = [];
 
-  // Helper: update a config property if the env value changed
+  // Helper: update a config property if the env value changed. Compare the
+  // RESOLVED values before/after applying, not raw .env text against the live
+  // config — setters transform (resolveDataPath, parseInt, defaults), so a
+  // raw-vs-resolved compare reports every empty/default key as "changed" on
+  // every reload and makes the UI demand a restart that isn't needed.
   const apply = (envKey: string, setter: (val: string) => void, getter: () => string) => {
-    const newVal = parsed[envKey] ?? '';
-    if (newVal !== getter()) {
-      setter(newVal);
-      changed.push(envKey);
-    }
+    const before = getter();
+    setter(parsed[envKey] ?? '');
+    if (getter() !== before) changed.push(envKey);
   };
 
   // ── Engine (values stored but won't affect running child process) ──
