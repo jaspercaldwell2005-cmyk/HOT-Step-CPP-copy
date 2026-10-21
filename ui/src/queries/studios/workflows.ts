@@ -30,7 +30,7 @@ export const studioWorkflowApi = {
     await queryClient.cancelQueries({ queryKey: key });
     const result = await workflowApi.updateDocument(...args);
     queryClient.setQueryData(key, result);
-    await queryManager.keys(queryClient, key);
+    await queryManager.invalidate(queryClient, key);
     return result;
   },
 };
@@ -56,8 +56,8 @@ export const followStudioJob: typeof followJob = (id, handlers, opts) => {
     clearTimeout(timer);
     timer = undefined;
     if (getSessionEpoch() !== epoch) return;
-    void queryManager.keys(queryClient, jobsKey);
-    void queryManager.keys(queryClient, documentsKey);
+    void queryManager.invalidate(queryClient, jobsKey);
+    void queryManager.invalidate(queryClient, documentsKey);
     void queryManager.songs.views(queryClient);
   };
   const invalidate = () => { timer ??= setTimeout(flush, 50); };

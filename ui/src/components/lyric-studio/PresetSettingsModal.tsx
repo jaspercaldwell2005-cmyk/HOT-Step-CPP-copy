@@ -192,9 +192,8 @@ export const PresetSettingsModal: React.FC<PresetSettingsModalProps> = ({
       });
       showToast('Preset saved');
       onClose();
-    } catch (err: any) {
-      showToast(`Save failed: ${err.message}`);
-    } finally {
+    } catch {} // command failure — the transport's interceptor already toasted it
+    finally {
       setSaving(false);
     }
   };
@@ -206,9 +205,8 @@ export const PresetSettingsModal: React.FC<PresetSettingsModalProps> = ({
       setForm(DEFAULT_FORM);
       showToast('Preset cleared');
       onClose();
-    } catch (err: any) {
-      showToast(`Failed: ${err.message}`);
-    } finally {
+    } catch {} // command failure — the transport's interceptor already toasted it
+    finally {
       setSaving(false);
     }
   };

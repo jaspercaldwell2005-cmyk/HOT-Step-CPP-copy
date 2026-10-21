@@ -153,9 +153,10 @@ export async function deleteJob(jobId: string): Promise<void> {
   await apiClient.delete(`${P}/${jobId}`);
 }
 
-/** Delete ALL extraction jobs and stems. */
+// Silent: the settings storage row renders this failure itself (its inline
+// error line), so a transport toast would be a second copy of the same error.
 export async function deleteAllJobs(): Promise<void> {
-  await apiClient.delete(`${P}/all`);
+  await apiClient.delete(`${P}/all`, { silent: true });
 }
 
 /** Get stem storage statistics for the Settings page. */
@@ -180,7 +181,7 @@ export async function waitForExtraction(
     queryKey: serverKey('studios/extract-result', { id: jobId }),
     queryFn: ({ signal }) => getExtractResult(jobId, { signal }),
   });
-  await queryManager.keys(queryClient, resourceKey('studios/extractions'));
+  await queryManager.invalidate(queryClient, resourceKey('studios/extractions'));
   return result;
 }
 

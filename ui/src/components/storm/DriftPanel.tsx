@@ -2,7 +2,9 @@
 // MDMAchine / A&E Concepts 2026
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { usePersistedState } from '../../hooks/usePersistedState';
+import { stormDriftOptions } from '../../queries/shell-queue/queue';
 import type { useStreamAudio } from '../../hooks/useStreamAudio';
 import { Toggle } from '../shared/Toggle';
 import { ParamLabel } from '../shared/ParamLabel';
@@ -32,17 +34,6 @@ interface ParamSpec {
   max: number;
   step: number;
   int?: boolean;
-}
-
-interface DriftSnapshot {
-  pos: Record<string, number>;
-  captionWeights: Record<string, number>;
-  seed: number;
-  slot: number;
-  pull: number;
-  rate: number;
-  jitter: number;
-  targetCaption: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -221,8 +212,14 @@ export function DriftPanel({ sa, isYue2, isSa3, streamId = 'default' }: DriftPan
     defaultPressure(),
   );
 
-  // Live snapshot from GET /storm/control
-  const [snapshot, setSnapshot] = useState<DriftSnapshot | null>(null);
+  // Live snapshot from GET /storm/control, polled only while streaming.
+  const driftQuery = useQuery({
+    ...stormDriftOptions(streamId),
+    enabled: sa.isPlaying,
+    refetchInterval: 2000,
+    refetchIntervalInBackground: true,
+  });
+  const snapshot = sa.isPlaying ? driftQuery.data?.drift ?? null : null;
 
   // Custom tag set editing
   const [newSetName, setNewSetName] = useState('');
@@ -299,23 +296,6 @@ export function DriftPanel({ sa, isYue2, isSa3, streamId = 'default' }: DriftPan
     setCaptionInput(pressure.targetCaption.join(', '));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // only on mount
-
-  // Poll GET /storm/control every 2s while streaming
-  useEffect(() => {
-    if (!sa.isPlaying) { setSnapshot(null); return; }
-    let alive = true;
-    const poll = async () => {
-      try {
-        const r = await fetch(`/api/generate/storm/control?streamId=${encodeURIComponent(streamId)}`);
-        if (!r.ok) return;
-        const data = await r.json() as { drift?: DriftSnapshot };
-        if (alive && data.drift) setSnapshot(data.drift);
-      } catch { /* ignore */ }
-    };
-    poll();
-    const id = setInterval(poll, 2000);
-    return () => { alive = false; clearInterval(id); };
-  }, [sa.isPlaying, streamId]);
 
   // Commit caption input on blur or Enter
   const commitCaption = useCallback(() => {

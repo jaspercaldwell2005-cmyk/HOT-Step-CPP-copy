@@ -1,4 +1,4 @@
-import { queryOptions, type QueryClient } from '@tanstack/react-query';
+import { queryOptions, type QueryClient, type QueryKey } from '@tanstack/react-query';
 import * as api from '../../services/trainingApi';
 import * as preparation from '../../services/trainingPreparationApi';
 import { getReviewLadder } from '../../services/trainingReviewApi';
@@ -133,18 +133,20 @@ export const runQueries = {
   }),
 };
 
-/** Commands execute once; only successful commands refresh their snapshots.
- * Capture the worker before starting a command, including across awaits. */
-export async function runCommand<T>(client: QueryClient, worker: Worker, command: () => Promise<T>): Promise<T> {
-  const result = await command();
-  await Promise.all([
-    queryManager.keys(client, ...[SHARED.preparation, SHARED.preparationJob].map(r => resourceKey(r))),
+/** What a training command dirtied (replaces runCommand's success-only plan):
+ * the preparation pair, this worker's training-runs reads (unscoped ones
+ * included), and its training-data reads. A write that dirties keys outside
+ * those filters (an unscoped training-data entry, another worker's scope)
+ * names them explicitly in its own plan. Capture the worker before starting
+ * the command, including across awaits. */
+export function trainingWritePlan(client: QueryClient, worker: Worker, ...explicit: QueryKey[]): Promise<unknown> {
+  return Promise.all([
+    queryManager.invalidate(client, ...[SHARED.preparation, SHARED.preparationJob].map(r => resourceKey(r)), ...explicit),
     queryManager.filter(client, { queryKey: ['hs'], predicate: q =>
       String(q.queryKey[1]).startsWith('training-runs/') &&
       (scopeOf(q.queryKey)?.worker === undefined || scopeOf(q.queryKey)?.worker === worker) }),
     queryManager.filter(client, { queryKey: ['hs'], predicate: q =>
       String(q.queryKey[1]).startsWith('training-data/') && scopeOf(q.queryKey)?.worker === worker }),
   ]);
-  return result;
 }
 

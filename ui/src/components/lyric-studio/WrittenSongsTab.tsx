@@ -530,18 +530,14 @@ export const WrittenSongsTab: React.FC<WrittenSongsTabProps> = ({
       await lireekApi.deleteGeneration(gen.id);
       showToast('Deleted');
       onRefresh();
-    } catch (err: any) {
-      showToast(`Failed: ${err.message}`);
-    }
+    } catch {} // command failure — the transport's interceptor already toasted it
   };
 
   const handleSaveField = async (genId: number, field: string, value: any) => {
     try {
       await lireekApi.updateMetadata(genId, { [field]: value });
       onRefresh();
-    } catch (err: any) {
-      showToast(`Failed to save: ${err.message}`);
-    }
+    } catch {} // command failure — the transport's interceptor already toasted it
   };
 
   // Show streaming panel if either generation or refinement is active

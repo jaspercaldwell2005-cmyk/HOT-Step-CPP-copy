@@ -38,11 +38,11 @@ export const CoverRecentSongs: React.FC<CoverRecentSongsProps> = ({ showToast, r
   useEffect(() => {
     if (previousRefresh.current !== refreshKey) {
       previousRefresh.current = refreshKey;
-      void queryManager.keys(queryClient, options.queryKey);
+      void queryManager.invalidate(queryClient, options.queryKey);
     }
   }, [refreshKey, options.queryKey]);
   useEffect(() => {
-    const refresh = () => { void queryManager.keys(queryClient, options.queryKey); };
+    const refresh = () => { void queryManager.invalidate(queryClient, options.queryKey); };
     window.addEventListener('song-postprocessed', refresh);
     window.addEventListener('song-postprocess-reverted', refresh);
     return () => {

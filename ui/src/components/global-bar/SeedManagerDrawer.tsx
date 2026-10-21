@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { localOptions } from '../../queries/global-models/options';
 import { queryManager } from '../../queries/invalidation';
 import { apiClient } from '../../services/httpClient';
@@ -19,6 +19,7 @@ import { apiClient } from '../../services/httpClient';
 
 import React from 'react';
 import { X, Star, Trash2, Save, Shuffle, Loader2 } from 'lucide-react';
+import { formatDay } from '../../utils/dateUtils';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -41,41 +42,7 @@ interface SeedManagerDrawerProps {
   onLoadRandom: (seed: number) => void;
 }
 
-// ─── API helpers ──────────────────────────────────────────────────────────────
-
-async function apiSave(name: string, seed: number, description: string): Promise<void> {
-  const res = await fetch('/api/seeds', {
-    method:  'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body:    JSON.stringify({ name, seed, description }),
-  });
-  if (!res.ok) throw new Error('save failed');
-}
-
-async function apiDelete(name: string): Promise<void> {
-  const res = await fetch(`/api/seeds/${encodeURIComponent(name)}`, { method: 'DELETE' });
-  if (!res.ok) throw new Error('delete failed');
-}
-
-async function apiToggleFavorite(name: string): Promise<boolean> {
-  const res = await fetch(`/api/seeds/${encodeURIComponent(name)}/favorite`, { method: 'POST' });
-  if (!res.ok) throw new Error('favorite toggle failed');
-  const data = await res.json();
-  return data.favorite;
-}
-
-async function apiRandom(): Promise<{ name: string; seed: number } | null> {
-  return apiClient.get('/seeds/random');
-}
-
 // ─── Subcomponents ────────────────────────────────────────────────────────────
-
-function fmtDate(iso: string | null): string {
-  if (!iso) return '';
-  try {
-    return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-  } catch { return ''; }
-}
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
@@ -87,14 +54,21 @@ export const SeedManagerDrawer: React.FC<SeedManagerDrawerProps> = ({
   const query = useQuery({ ...options, enabled: isOpen });
   const seeds = query.data?.seeds ?? [];
   const loading = query.isPending;
-  const refresh = () => queryManager.keys(client, options.queryKey);
+  const refresh = () => queryManager.invalidate(client, options.queryKey);
   const [filter,      setFilter]      = React.useState('');
   const [saveName,    setSaveName]    = React.useState('');
   const [saveDesc,    setSaveDesc]    = React.useState('');
-  const [saving,      setSaving]      = React.useState(false);
   const [deleteConfirm, setDeleteConfirm] = React.useState<string | null>(null);
   const [flashLoaded, setFlashLoaded] = React.useState<string | null>(null);
+  // Read failures surface inline (GET errors never toast — the interceptor's
+  // method filter); command failures are toasted by the transport. Each request
+  // is single-use, so it lives in its mutation body rather than an extracted
+  // helper.
   const [error,       setError]       = React.useState<string | null>(null);
+
+  const saveMut = useMutation({ mutationFn: ({ name, seed, description }: { name: string; seed: number; description: string }) => apiClient.post('/seeds', { name, seed, description }) });
+  const deleteMut = useMutation({ mutationFn: (name: string) => apiClient.delete(`/seeds/${encodeURIComponent(name)}`) });
+  const favoriteMut = useMutation({ mutationFn: (name: string) => apiClient.post<{ favorite: boolean }>(`/seeds/${encodeURIComponent(name)}/favorite`).then(d => d.favorite) });
 
   React.useEffect(() => { if (query.error) setError(query.error.message); }, [query.error]);
 
@@ -122,41 +96,28 @@ export const SeedManagerDrawer: React.FC<SeedManagerDrawerProps> = ({
     setTimeout(() => setFlashLoaded(null), 1200);
   };
 
-  const handleSave = async () => {
+  const handleSave = () => {
     const name = saveName.trim() || `seed_${currentSeed}`;
-    setSaving(true);
     setError(null);
-    try {
-      await apiSave(name, currentSeed, saveDesc.trim());
-      await refresh();
-      setSaveName('');
-      setSaveDesc('');
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'save failed');
-    } finally { setSaving(false); }
+    saveMut.mutate(
+      { name, seed: currentSeed, description: saveDesc.trim() },
+      { onSuccess: () => { void refresh(); setSaveName(''); setSaveDesc(''); } },
+    );
   };
 
-  const handleDelete = async (name: string) => {
+  const handleDelete = (name: string) => {
     if (deleteConfirm !== name) { setDeleteConfirm(name); return; }
     setDeleteConfirm(null);
-    try {
-      await apiDelete(name);
-      await refresh();
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'delete failed');
-    }
+    deleteMut.mutate(name, { onSuccess: () => void refresh() });
   };
 
-  const handleFavorite = async (name: string) => {
-    try {
-      await apiToggleFavorite(name);
-      await refresh();
-    } catch {}
+  const handleFavorite = (name: string) => {
+    favoriteMut.mutate(name, { onSuccess: () => void refresh() });
   };
 
   const handleRandom = async () => {
     try {
-      const r = await apiRandom();
+      const r = await apiClient.get<{ seed: number; name: string }>('/seeds/random');
       if (r) {
         onLoadRandom(r.seed);
         setFlashLoaded(r.name);
@@ -217,10 +178,10 @@ export const SeedManagerDrawer: React.FC<SeedManagerDrawerProps> = ({
           />
           <button
             onClick={handleSave}
-            disabled={saving}
+            disabled={saveMut.isPending}
             className="flex items-center gap-1 text-[9px] px-2 py-0.5 rounded bg-amber-600 hover:bg-amber-500 text-white font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            {saving ? <Loader2 size={9} className="animate-spin" /> : <Save size={9} />}
+            {saveMut.isPending ? <Loader2 size={9} className="animate-spin" /> : <Save size={9} />}
             Save
           </button>
         </div>
@@ -268,6 +229,8 @@ export const SeedManagerDrawer: React.FC<SeedManagerDrawerProps> = ({
               {/* Favorite star */}
               <button
                 onClick={() => handleFavorite(s.name)}
+                // A double-click would queue two toggles — the second undoes the first.
+                disabled={favoriteMut.isPending && favoriteMut.variables === s.name}
                 className={`flex-shrink-0 transition-colors ${
                   s.favorite ? 'text-amber-400 hover:text-amber-300' : 'text-zinc-700 hover:text-zinc-500'
                 }`}
@@ -298,7 +261,7 @@ export const SeedManagerDrawer: React.FC<SeedManagerDrawerProps> = ({
                       <span className="text-[7px] text-zinc-600 truncate">{s.description}</span>
                     )}
                     {s.saved_at && (
-                      <span className="text-[7px] text-zinc-700 shrink-0">{fmtDate(s.saved_at)}</span>
+                      <span className="text-[7px] text-zinc-700 shrink-0">{formatDay(s.saved_at)}</span>
                     )}
                   </div>
                 )}

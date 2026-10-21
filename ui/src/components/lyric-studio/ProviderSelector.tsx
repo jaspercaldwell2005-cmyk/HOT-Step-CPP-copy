@@ -4,10 +4,8 @@
 import { useQuery } from '@tanstack/react-query';
 import { queryClient } from '../../queries/client';
 import { snapshotOptions } from '../../queries/cover-lyrics/reads';
-import { queryManager } from '../../queries/invalidation';
 import React, { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { lireekApi } from '../../services/lireekApi';
 import { StyledSelect } from '../shared/StyledSelect';
 import { ParamLabel } from '../shared/ParamLabel';
 
@@ -21,9 +19,16 @@ interface LlmProviderInfo {
 }
 
 // ── Global provider cache ─────────────────────────────────────────────────
+/** The provider snapshot every selector observes. */
+export const providersOptions = () => snapshotOptions<LlmProviderInfo[]>('lireek', '/lireek/providers');
+
+/** Read through the same cache entry the selectors observe. A forced refresh
+ *  asks the server but still writes the answer back, so callers and observers
+ *  can never disagree about which list is current. */
 export async function getCachedProviders(forceRefresh = false): Promise<LlmProviderInfo[]> {
-  if (forceRefresh) await queryManager.keys(queryClient, snapshotOptions('lireek', '/lireek/providers').queryKey);
-  return (await lireekApi.getProviders()).filter(p => p.available);
+  const options = providersOptions();
+  const data = await queryClient.query(forceRefresh ? { ...options, staleTime: 0 } : options);
+  return data.filter(p => p.available);
 }
 
 // ── localStorage persistence for model selections ─────────────────────────
@@ -131,7 +136,7 @@ export const TripleProviderSelector: React.FC<TripleProviderSelectorProps> = ({
   selections,
   onSelectionsChange,
 }) => {
-  const snapshot = useQuery(snapshotOptions<LlmProviderInfo[]>('lireek', '/lireek/providers'));
+  const snapshot = useQuery(providersOptions());
   const providers = snapshot.data?.filter(p => p.available) ?? [];
   const { t } = useTranslation();
   const loading = snapshot.isPending;
@@ -235,7 +240,7 @@ export const ProviderSelector: React.FC<ProviderSelectorProps> = ({
   compact = false,
 }) => {
   const { t } = useTranslation();
-  const snapshot = useQuery(snapshotOptions<LlmProviderInfo[]>('lireek', '/lireek/providers'));
+  const snapshot = useQuery(providersOptions());
   const providers = snapshot.data?.filter(p => p.available) ?? [];
   const loading = snapshot.isPending;
 

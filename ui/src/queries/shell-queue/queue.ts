@@ -24,15 +24,39 @@ export const audioQueueItemsOptions = () => queryOptions({
   retry: false,
 });
 
-export const generationStatusOptions = (jobId: string) => queryOptions({
+export const generationStatusOptions = (jobId: string, options: { signal?: AbortSignal } = {}) => queryOptions({
   queryKey: serverKey('shell-queue/generation-status', { id: jobId }),
-  queryFn: ({ signal }) => generateApi.status(jobId, { signal }),
+  queryFn: ({ signal }) => generateApi.status(jobId, {
+    signal: options.signal ? AbortSignal.any([signal, options.signal]) : signal,
+  }),
   retry: false,
 });
 
 export const workflowJobOptions = (jobId: string) => queryOptions({
   queryKey: sharedKeys.workflowJob(jobId),
   queryFn: ({ signal }) => apiClient.get<WorkflowReplay>(`/workflows/jobs/${encodeURIComponent(jobId)}?after=0`, { signal }),
+  retry: false,
+});
+
+/** The Directed Drift panel's live control snapshot (GET /storm/control). */
+export interface DriftSnapshot {
+  pos: Record<string, number>;
+  captionWeights: Record<string, number>;
+  seed: number;
+  slot: number;
+  pull: number;
+  rate: number;
+  jitter: number;
+  targetCaption: string[];
+}
+
+/** Polled by the panel only while its stream is playing; no retry, because a
+ *  dropped tick is replaced by the next one anyway. */
+export const stormDriftOptions = (streamId: string) => queryOptions({
+  queryKey: serverKey('shell-queue/storm-drift', { filters: { streamId } }),
+  queryFn: ({ signal }) => apiClient.get<{ drift?: DriftSnapshot }>(
+    `/generate/storm/control?streamId=${encodeURIComponent(streamId)}`, { signal }),
+  staleTime: 0,
   retry: false,
 });
 

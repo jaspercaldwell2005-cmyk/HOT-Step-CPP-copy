@@ -67,9 +67,7 @@ export const ProfilesTab: React.FC<ProfilesTabProps> = ({
       await lireekApi.deleteProfile(profile.id);
       showToast('Profile deleted');
       onRefresh();
-    } catch (err: any) {
-      showToast(`Failed: ${err.message}`);
-    }
+    } catch {} // command failure — the transport's interceptor already toasted it
   };
 
   const MetaBadge: React.FC<{ label: string; value: string; color: string }> = ({ label, value, color }) => {

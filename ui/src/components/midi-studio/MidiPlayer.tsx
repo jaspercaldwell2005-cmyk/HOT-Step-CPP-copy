@@ -122,8 +122,8 @@ export const MidiPlayer: React.FC<Props> = ({ jobId, sourceAudioUrl, live }) => 
             setChunks({ done: ev.completed, total: ev.total });
             setFrontier(ev.completed * 5.0);
           } else if (ev.type === 'status') {
-            void queryManager.keys(client, midiJobsOptions().queryKey);
-            void queryManager.keys(client, midiNotesOptions(jobId).queryKey);
+            void queryManager.invalidate(client, midiJobsOptions().queryKey);
+            void queryManager.invalidate(client, midiNotesOptions(jobId).queryKey);
             flush();
             setLiveDone(true);
             setFrontier(null);
@@ -131,8 +131,8 @@ export const MidiPlayer: React.FC<Props> = ({ jobId, sourceAudioUrl, live }) => 
           }
         } catch { /* ignore malformed */ }
       };
-      es.onopen = () => { void queryManager.keys(client, midiJobsOptions().queryKey); };
-      es.onerror = () => { void queryManager.keys(client, midiJobsOptions().queryKey); };
+      es.onopen = () => { void queryManager.invalidate(client, midiJobsOptions().queryKey); };
+      es.onerror = () => { void queryManager.invalidate(client, midiJobsOptions().queryKey); };
       return () => { window.clearInterval(flushTimer); es.close(); };
     }
     return undefined;

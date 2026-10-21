@@ -30,7 +30,7 @@ export const Yue2ClearPreparedCard: React.FC<{ datasetId: string; disabled: bool
   const [includeCore, setIncludeCore] = useState(false);
   const [note, setNote] = useState('');
 
-  const load = () => queryManager.keys(queryClient, prepared.queryKey);
+  const load = () => queryManager.invalidate(queryClient, prepared.queryKey);
   useEffect(() => { setIncludeCore(false); }, [datasetId]);
 
   const targets = info ? info.caches.filter(c => includeCore || !c.core) : [];

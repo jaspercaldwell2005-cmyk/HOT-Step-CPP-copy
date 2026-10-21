@@ -101,7 +101,7 @@ export const SourcePanel: React.FC<SourcePanelProps> = ({
       const result = await masteringApi.uploadReference(file);
       onTimbreOverridePathChange(result.name);
       // Refresh list if browser is open
-      await queryManager.keys(queryClient, referenceOptions.queryKey);
+      await queryManager.invalidate(queryClient, referenceOptions.queryKey);
     } catch (err) {
       console.error('[Timbre] Upload failed:', err);
     } finally {

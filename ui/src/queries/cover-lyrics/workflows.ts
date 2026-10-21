@@ -30,7 +30,7 @@ export const coverLyricWorkflowApi = {
     await queryClient.cancelQueries({ queryKey: key });
     const result = await workflowApi.updateDocument(...args);
     queryClient.setQueryData(key, result);
-    await queryManager.keys(queryClient, key);
+    await queryManager.invalidate(queryClient, key);
     return result;
   },
 };
@@ -56,11 +56,11 @@ export const followCoverLyricJob: typeof followJob = (id, handlers, opts) => {
     clearTimeout(timer);
     timer = undefined;
     if (getSessionEpoch() !== epoch) return;
-    void queryManager.keys(queryClient, jobKey);
-    void queryManager.keys(queryClient, documentsKey);
+    void queryManager.invalidate(queryClient, jobKey);
+    void queryManager.invalidate(queryClient, documentsKey);
     void queryManager.songs.views(queryClient);
-    void queryManager.keys(queryClient, resourceKey('cover-lyrics/lireek'));
-    void queryManager.keys(queryClient, resourceKey('cover-lyrics/drafts', jobScope));
+    void queryManager.invalidate(queryClient, resourceKey('cover-lyrics/lireek'));
+    void queryManager.invalidate(queryClient, resourceKey('cover-lyrics/drafts', jobScope));
   };
   const invalidate = () => { timer ??= setTimeout(flush, 50); };
   return followJob(id, {

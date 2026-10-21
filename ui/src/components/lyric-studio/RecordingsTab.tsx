@@ -10,9 +10,7 @@
  */
 
 import { queryClient } from '../../queries/client';
-import { serverKey } from '../../queries/keys';
-import { apiClient } from '../../services/httpClient';
-import type { GenerationJob } from '../../types';
+import { generationStatusOptions } from '../../queries/shell-queue/queue';
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Play, Trash2, Headphones, ChevronDown, ChevronRight, Loader2, Clock, X, Filter, Download, ListPlus, Check } from 'lucide-react';
@@ -120,7 +118,7 @@ export const RecordingsTab: React.FC<RecordingsTabProps> = ({
                 } else {
                   // Fallback: check job status
                   try {
-                    const status = await queryClient.query({ queryKey: serverKey('shell-queue/generation-status', { id: ag.hotstep_job_id }), queryFn: ({ signal }) => apiClient.get<GenerationJob>(`/generate/status/${encodeURIComponent(ag.hotstep_job_id)}`, { signal: AbortSignal.any([signal, controller.signal]) }), staleTime: 0 });
+                    const status = await queryClient.query({ ...generationStatusOptions(ag.hotstep_job_id, { signal: controller.signal }), staleTime: 0 });
                     if (status?.status === 'succeeded' && status.result?.audioUrls) {
                       for (const audioUrl of status.result.audioUrls) {
                         songs.push({
@@ -187,9 +185,7 @@ export const RecordingsTab: React.FC<RecordingsTabProps> = ({
       showToast('Audio generation deleted');
       setLocalRefreshKey(k => k + 1);
       onDeleteComplete?.();
-    } catch (err: any) {
-      showToast(`Failed to delete: ${err.message}`);
-    }
+    } catch {} // command failure — the transport's interceptor already toasted it
   }, [showToast, onDeleteComplete]);
 
   if (loading) {

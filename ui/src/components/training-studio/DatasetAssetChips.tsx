@@ -18,16 +18,10 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import type { DatasetAssets } from '../../services/trainingApi';
 import { useBackendStore } from '../../stores/backendStore';
+import { formatDayYear } from '../../utils/dateUtils';
 
 const ON = 'text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border-emerald-500/25';
 const OFF = 'text-zinc-400 dark:text-zinc-600 bg-transparent border-zinc-300/60 dark:border-white/10';
-
-function formatWhen(iso: string): string {
-  if (!iso) return '';
-  const d = new Date(iso.includes('T') || iso.includes('Z') ? iso : iso.replace(' ', 'T') + 'Z');
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-}
 
 interface ChipProps {
   on: boolean;
@@ -83,7 +77,7 @@ export const DatasetAssetChips: React.FC<DatasetAssetChipsProps> = ({
             on={!!mm3?.lmAdapter}
             label={t('trainingStudio.assets.lmAdapter')}
             title={mm3?.lmAdapter
-              ? t('trainingStudio.assets.lmAdapterOn', { when: formatWhen(mm3.lmAdapter.trainedAt) || '—' })
+              ? t('trainingStudio.assets.lmAdapterOn', { when: formatDayYear(mm3.lmAdapter.trainedAt, mm3.lmAdapter.trainedAt) || '—' })
               : t('trainingStudio.assets.lmAdapterOff')}
           />
         </>
@@ -118,14 +112,14 @@ export const DatasetAssetChips: React.FC<DatasetAssetChipsProps> = ({
             on={!!yue2?.narAdapter}
             label={t('trainingStudio.assets.narAdapter')}
             title={yue2?.narAdapter
-              ? t('trainingStudio.assets.narAdapterOn', { when: formatWhen(yue2.narAdapter.trainedAt) || '—' })
+              ? t('trainingStudio.assets.narAdapterOn', { when: formatDayYear(yue2.narAdapter.trainedAt, yue2.narAdapter.trainedAt) || '—' })
               : t('trainingStudio.assets.narAdapterOff')}
           />
           <Chip
             on={!!yue2?.arAdapter}
             label={t('trainingStudio.assets.arAdapter')}
             title={yue2?.arAdapter
-              ? t('trainingStudio.assets.arAdapterOn', { when: formatWhen(yue2.arAdapter.trainedAt) || '—' })
+              ? t('trainingStudio.assets.arAdapterOn', { when: formatDayYear(yue2.arAdapter.trainedAt, yue2.arAdapter.trainedAt) || '—' })
               : t('trainingStudio.assets.arAdapterOff')}
           />
         </>
@@ -152,7 +146,7 @@ export const DatasetAssetChips: React.FC<DatasetAssetChipsProps> = ({
             title={assets.dit
               ? t('trainingStudio.assets.ditOn', {
                   base: assets.dit.detail || '?',
-                  when: formatWhen(assets.dit.trainedAt) || '—',
+                  when: formatDayYear(assets.dit.trainedAt, assets.dit.trainedAt) || '—',
                 })
               : t('trainingStudio.assets.ditOff')}
           />
@@ -163,7 +157,7 @@ export const DatasetAssetChips: React.FC<DatasetAssetChipsProps> = ({
             title={assets.lm
               ? t('trainingStudio.assets.lmOn', {
                   size: assets.lm.detail || '?',
-                  when: formatWhen(assets.lm.trainedAt) || '—',
+                  when: formatDayYear(assets.lm.trainedAt, assets.lm.trainedAt) || '—',
                 })
               : t('trainingStudio.assets.lmOff')}
           />

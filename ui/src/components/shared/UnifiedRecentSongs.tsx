@@ -64,9 +64,7 @@ export const UnifiedRecentSongs: React.FC<UnifiedRecentSongsProps> = ({
       await songApi.delete(rs.id);
       void removeSongs(queryClient, [rs.id]);
       showToast('Song deleted');
-    } catch {
-      showToast('Failed to delete song', 'error');
-    }
+    } catch {} // command failure — the transport's interceptor already toasted it
   }, [token, showToast, queryClient]);
 
   const handleDownload = useCallback((rs: UnifiedRecentSong) => {

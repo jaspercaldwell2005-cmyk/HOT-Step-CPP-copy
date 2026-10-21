@@ -327,7 +327,7 @@ export const LyricStudioV2: React.FC = () => {
       await lireekApi.deleteArtist(artist.id);
       showToast(`Deleted ${artist.name}`);
       loadArtists();
-    } catch (err: any) { showToast(`Failed to delete: ${err.message}`); }
+    } catch {} // command failure — the transport's interceptor already toasted it
   }, [loadArtists, showToast]);
 
   const handleRefreshImage = useCallback(async (artist: Artist) => {
@@ -335,14 +335,14 @@ export const LyricStudioV2: React.FC = () => {
       showToast(`Refreshing image for ${artist.name}...`);
       await lireekApi.refreshArtistImage(artist.id);
       showToast(`Updated image for ${artist.name}`);
-    } catch (err: any) { showToast(`Couldn't find image: ${err.message}`); }
+    } catch {} // command failure — the transport's interceptor already toasted it
   }, [showToast]);
 
   const handleSetImage = useCallback(async (artist: Artist, url: string) => {
     try {
       await lireekApi.setArtistImage(artist.id, url);
       showToast(`Image updated for ${artist.name}`);
-    } catch (err: any) { showToast(`Failed: ${err.message}`); }
+    } catch {} // command failure — the transport's interceptor already toasted it
   }, [showToast]);
 
   const handleDeleteAlbum = useCallback(async (album: LyricsSet) => {
@@ -351,21 +351,21 @@ export const LyricStudioV2: React.FC = () => {
       await lireekApi.deleteLyricsSet(album.id);
       showToast('Album deleted');
       if (nav.selectedArtist) loadAlbums(nav.selectedArtist.id);
-    } catch (err: any) { showToast(`Failed to delete: ${err.message}`); }
+    } catch {} // command failure — the transport's interceptor already toasted it
   }, [nav.selectedArtist, loadAlbums, showToast]);
 
   const handleRefreshAlbumImage = useCallback(async (album: LyricsSet) => {
     try {
       await lireekApi.refreshAlbumImage(album.id);
       showToast('Album image updated');
-    } catch { showToast('Could not find album image on Genius'); }
+    } catch {} // command failure — the transport's interceptor already toasted it
   }, [showToast]);
 
   const handleSetAlbumImage = useCallback(async (album: LyricsSet, url: string) => {
     try {
       await lireekApi.setAlbumImage(album.id, url);
       showToast('Album image set');
-    } catch (err: any) { showToast(`Failed: ${err.message}`); }
+    } catch {} // command failure — the transport's interceptor already toasted it
   }, [showToast]);
 
   const handleDeleteSong = useCallback(async (index: number) => {
@@ -375,7 +375,7 @@ export const LyricStudioV2: React.FC = () => {
       showToast('Song removed');
       const updated = await lireekApi.getLyricsSet(nav.selectedAlbum.id);
       setNav(prev => ({ ...prev, selectedAlbum: updated }));
-    } catch (err: any) { showToast(`Failed: ${err.message}`); }
+    } catch {} // command failure — the transport's interceptor already toasted it
   }, [nav.selectedAlbum, showToast]);
 
   const handleEditSong = useCallback(async (index: number, lyrics: string) => {
@@ -384,7 +384,7 @@ export const LyricStudioV2: React.FC = () => {
       const updated = await lireekApi.editSong(nav.selectedAlbum.id, index, lyrics);
       setNav(prev => ({ ...prev, selectedAlbum: updated }));
       showToast('Lyrics updated');
-    } catch (err: any) { showToast(`Failed: ${err.message}`); }
+    } catch {} // command failure — the transport's interceptor already toasted it
   }, [nav.selectedAlbum, showToast]);
 
   const handleFetchLyrics = useCallback(async (artist: string, album: string, maxSongs: number) => {
@@ -400,7 +400,7 @@ export const LyricStudioV2: React.FC = () => {
         await loadAlbums(nav.selectedArtist.id);
       }
       if (nav.level === 'artists') handleSelectArtist(res.artist);
-    } catch (err: any) { showToast(`Fetch failed: ${err.message}`); }
+    } catch {} // command failure — the transport's interceptor already toasted it
     finally { setFetchingLyrics(false); setFetchingLabel(''); }
   }, [loadArtists, loadAlbums, nav.selectedArtist, nav.level, handleSelectArtist, showToast]);
 
@@ -479,7 +479,7 @@ export const LyricStudioV2: React.FC = () => {
       showToast(`Added ${res.artist.name}`);
       await loadArtists();
       handleSelectArtist(res.artist);
-    } catch (err: any) { showToast(`Failed to add artist: ${err.message}`); }
+    } catch {} // command failure — the transport's interceptor already toasted it
   }, [loadArtists, handleSelectArtist, showToast]);
 
   const handleAddAlbumManual = useCallback(async (albumName: string | undefined, imageUrl?: string) => {
@@ -489,7 +489,7 @@ export const LyricStudioV2: React.FC = () => {
       showToast(`Created ${albumName || 'lyrics collection'}`);
       await loadAlbums(nav.selectedArtist.id);
       handleSelectAlbum(res.lyrics_set);
-    } catch (err: any) { showToast(`Failed to create album: ${err.message}`); }
+    } catch {} // command failure — the transport's interceptor already toasted it
   }, [nav.selectedArtist, loadAlbums, handleSelectAlbum, showToast]);
 
   const handleAddSong = useCallback(async (title: string, lyrics: string) => {
@@ -498,7 +498,7 @@ export const LyricStudioV2: React.FC = () => {
       const updated = await lireekApi.addSongToSet(nav.selectedAlbum.id, { title, lyrics });
       showToast(`Added "${title}"`);
       setNav(prev => ({ ...prev, selectedAlbum: updated }));
-    } catch (err: any) { showToast(`Failed to add song: ${err.message}`); }
+    } catch {} // command failure — the transport's interceptor already toasted it
   }, [nav.selectedAlbum, showToast]);
 
   const handleCuratedComplete = useCallback(async (lyricsSet: any) => {

@@ -17,6 +17,7 @@ import { songApi } from './services/api';
 import { useJobProgressWatcher, requestNotifyPermissionFromGesture } from './hooks/useJobProgress';
 import { bridgeEvents } from './queries/sseBridge';
 import { SONG_VIEWS, invalidateSongs, patchLibrary, patchSong, removeSongs, songOptions, songsOptions } from './queries/shell-queue/songs';
+import { waitForQuery } from './queries/wait';
 import { Sidebar } from './components/sidebar/Sidebar';
 import { CreatePanel } from './components/create/CreatePanel';
 import { SongList } from './components/library/SongList';
@@ -392,39 +393,35 @@ const AppContent: React.FC = () => {
     // If disco extraction is on and this track has no disco data, trigger extraction
     if (settings.discoKickExtract && currentTrack?.id && !discoUrl) {
       console.log(`[Disco] Track ${currentTrack.id} has no disco data — triggering extraction`);
-      let cancelled = false;
+      const controller = new AbortController();
+      const jobId = currentTrack.id;
       (async () => {
         try {
-          const res = await fetch(`/api/songs/${currentTrack.id}/extract-kick`, { method: 'POST' });
+          const res = await fetch(`/api/songs/${jobId}/extract-kick`, { method: 'POST', signal: controller.signal });
           const data = await res.json();
-          if (cancelled) return;
+          if (controller.signal.aborted) return;
           if (data.status === 'exists' && data.discoDataUrl) {
-            console.log(`[Disco] Disco data already exists for ${currentTrack.id}`);
+            console.log(`[Disco] Disco data already exists for ${jobId}`);
             setDiscoDataUrl(data.discoDataUrl);
             return;
           }
           if (data.status !== 'started') return;
-          console.log(`[Disco] Stem extraction started for ${currentTrack.id}`);
+          console.log(`[Disco] Stem extraction started for ${jobId}`);
 
-          // Poll until disco data URL appears on the song
-          for (let i = 0; i < 360 && !cancelled; i++) {
-            await new Promise(r => setTimeout(r, 5000));
-            if (cancelled) return;
-            try {
-              const { song: s } = await queryClient.query({ ...songOptions(currentTrack.id), staleTime: 0 });
-              const ddUrl = s.disco_data_url || '';
-              if (ddUrl) {
-                console.log(`[Disco] Disco data ready for ${currentTrack.id}: ${ddUrl}`);
-                setDiscoDataUrl(ddUrl);
-                return;
-              }
-            } catch { /* keep polling */ }
-          }
+          // Poll the canonical song snapshot until the URL lands. The waiter
+          // owns the cadence, the cache entry and cancellation.
+          const { song } = await waitForQuery<{ song: { disco_data_url?: string } }>(songOptions(jobId), s => !s.song.disco_data_url, ({ song: s }) => {
+            if (s.disco_data_url) setDiscoDataUrl(s.disco_data_url);
+          }, { pollMs: 5000, timeoutMs: 30 * 60 * 1000, signal: controller.signal });
+          console.log(`[Disco] Disco data ready for ${jobId}: ${song.disco_data_url}`);
+          // The library list now carries a new disco URL; refresh it so the
+          // player and other views see the same snapshot this wait resolved on.
+          void invalidateSongs(queryClient);
         } catch (err) {
-          console.warn('[Disco] On-demand extraction failed:', err);
+          if ((err as Error)?.name !== 'AbortError') console.warn('[Disco] On-demand extraction failed:', err);
         }
       })();
-      return () => { cancelled = true; };
+      return () => controller.abort();
     }
   }, [currentTrack?.id, currentTrack?.discoDataUrl, settings.discoKickExtract, queryClient]);
 
@@ -478,8 +475,14 @@ const AppContent: React.FC = () => {
   // never reloaded when it came back (issue #153).
   useEffect(() => {
     const onRestarting = () => setIsRestarting(true);
+    // A refused restart (the server is still up) drops the overlay again.
+    const onRestartCancelled = () => setIsRestarting(false);
     window.addEventListener('hotstep:restarting', onRestarting);
-    return () => window.removeEventListener('hotstep:restarting', onRestarting);
+    window.addEventListener('hotstep:restart-cancelled', onRestartCancelled);
+    return () => {
+      window.removeEventListener('hotstep:restarting', onRestarting);
+      window.removeEventListener('hotstep:restart-cancelled', onRestartCancelled);
+    };
   }, []);
 
   // ── URL-based routing ──────────────────────────────────────

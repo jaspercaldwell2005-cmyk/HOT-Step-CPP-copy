@@ -16,6 +16,7 @@ import { resourceKey } from '../queries/keys';
 import { queryManager } from '../queries/invalidation';
 import { keysPlan, writeAndInvalidate } from '../queries/writes';
 import { cancelWorkerReads, TD, trainingQueries as tq, workerReads } from '../queries/training-data/queries';
+import { runQueries } from '../queries/training-runs/queries';
 import { TRAINING_RECIPE_VERSION } from '../../../server/src/contracts/trainingRecipes';
 import { computeTrainingEta, type TrainingEta } from '../utils/trainingEta';
 import type {
@@ -1039,7 +1040,7 @@ export const useTrainingStore = create<TrainingState>((set, get) => ({
       // A stage that moved changed some dataset on this worker. Structural
       // sharing keeps an unchanged list the same object. Not a write — the
       // read itself detected the drift, so it goes straight to the manager.
-      if (pipelines !== get().pipelines) void queryManager.keys(queryClient, resourceKey(TD.datasets, { worker }));
+      if (pipelines !== get().pipelines) void queryManager.invalidate(queryClient, resourceKey(TD.datasets, { worker }));
       set(get().trainingWorker === worker ? { pipelines, pipelinesLoading: false } : { pipelinesLoading: false });
     } catch (err) {
       // Advisory — a failed poll must never blank the monitor panel mid-run.
@@ -1572,7 +1573,7 @@ function refreshAfterJob(get: GetState, jobId: string): void {
   if (get().activeJob?.kind === 'train-lm') {
     void get().loadTrainLmStatus();
     // ...and the adapter pickers list what is under adapters/lm.
-    void queryManager.keys(queryClient, resourceKey(TD.lmAdapters));
+    void queryManager.invalidate(queryClient, resourceKey(TD.lmAdapters));
   }
   // Same for the DiT adapter dir — the per-epoch export means even a cancelled
   // run usually leaves one on disk, so this refresh matters on every terminal
@@ -1613,10 +1614,15 @@ async function runPreparation(
   set({ yue2RunAllActive: true, yue2RunAllStage: null, error: null });
   try {
     const context = await preparationApi.getYue2PreparationContext(datasetId);
-    const pipeline = await preparationApi.startYue2Preparation(snapshotFor({
-      kind: 'yue2-preparation', idempotencyKey: crypto.randomUUID(), worker: workerRef(worker),
-      dataset: context.dataset, sources: [context.source], payload: payload(),
-    }));
+    // Starting a chain adds a row to this dataset's preparation list — the
+    // stages panel polls that list, so invalidate it on success like every
+    // other store write here.
+    const pipeline = await writeAndInvalidate(queryClient,
+      () => preparationApi.startYue2Preparation(snapshotFor({
+        kind: 'yue2-preparation', idempotencyKey: crypto.randomUUID(), worker: workerRef(worker),
+        dataset: context.dataset, sources: [context.source], payload: payload(),
+      })),
+      keysPlan(runQueries.preparations(datasetId).queryKey));
     await followYue2Preparation(set, get, pipeline.id, worker, datasetId);
   } catch (err) {
     if (get().trainingWorker === worker) set({ error: errMessage(err) });

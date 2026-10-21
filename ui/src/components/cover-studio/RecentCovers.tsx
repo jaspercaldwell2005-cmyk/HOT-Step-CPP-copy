@@ -2,19 +2,13 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { coverSongsOptions, deleteCovers } from '../../queries/cover-lyrics/songs';
-import { queryClient } from '../../queries/client';
-import { queryManager } from '../../queries/invalidation';
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState } from 'react';
 import { Music, Play, Pause, Loader2, Trash2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import type { Song } from '../../types';
 import { playFromList, togglePlay, songToTrack, usePlaybackSelector } from '../../stores/playbackStore';
 
-interface RecentCoversProps {
-  refreshTrigger: number;
-}
-
-export const RecentCovers: React.FC<RecentCoversProps> = ({ refreshTrigger }) => {
+export const RecentCovers: React.FC = () => {
   const { token } = useAuth();
   const currentTrackId = usePlaybackSelector(s => s.currentTrack?.id ?? null);
   const isPlaying = usePlaybackSelector(s => s.isPlaying);
@@ -24,13 +18,6 @@ export const RecentCovers: React.FC<RecentCoversProps> = ({ refreshTrigger }) =>
     new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime()).slice(0, 20);
   const loading = !!token && snapshot.isPending;
   const [clearing, setClearing] = useState(false);
-  const previousRefresh = useRef(refreshTrigger);
-  useEffect(() => {
-    if (previousRefresh.current !== refreshTrigger) {
-      previousRefresh.current = refreshTrigger;
-      void queryManager.keys(queryClient, options.queryKey);
-    }
-  }, [refreshTrigger, options.queryKey]);
 
   const handleClearAll = async () => {
     if (!token || covers.length === 0) return;

@@ -2,11 +2,11 @@
 // Composes: SourcePanel, ArtistSettingsPanel
 
 import { pollWhile } from '../../queries/contract';
-import { waitForSnapshot } from '../../queries/cover-lyrics/wait';
-import { serverKey } from '../../queries/keys';
+import { waitForQuery } from '../../queries/wait';
+import { generationStatusOptions } from '../../queries/shell-queue/queue';
 import { songsChanged } from '../../queries/cover-lyrics/reads';
 import type { Yue2CoverResult } from '../../services/yue2CoverApi';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { snapshotOptions } from '../../queries/cover-lyrics/reads';
 import type { LyricsSet } from '../../services/lireekApi';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
@@ -18,6 +18,7 @@ import { useGlobalParamsStore } from '../../context/GlobalParamsContext';
 import { usePersistedState } from '../../hooks/usePersistedState';
 import { DEFAULT_SETTINGS, type AppSettings } from '../settings/SettingsPanel';
 import { generateApi } from '../../services/api';
+import type { GenerationJob } from '../../types';
 import { apiClient, ApiError } from '../../services/httpClient';
 import { createGenerationTimer, getGenerationTimeoutMinutes } from '../../utils/generationTimer';
 import { lireekApi, type Artist, type AlbumPreset } from '../../services/lireekApi';
@@ -163,7 +164,6 @@ export const CoverStudio: React.FC<CoverStudioProps> = ({ coverSource }) => {
   const sourceLookupRef = useRef(0);
   const lyricEditRef = useRef(0);
   const instrumentalEditRef = useRef(0);
-  const [isSearchingLyrics, setIsSearchingLyrics] = useState(false);
 
   // ── Target artist ──
   const artistsQuery = useQuery(snapshotOptions<Artist[]>('lireek', '/lireek/artists'));
@@ -184,7 +184,9 @@ export const CoverStudio: React.FC<CoverStudioProps> = ({ coverSource }) => {
   // ── Cover caption LLM ──
   const [coverCaptionProvider, setCoverCaptionProvider] = useState(() => loadSelections().coverCaption.provider);
   const [coverCaptionModel, setCoverCaptionModel] = useState(() => loadSelections().coverCaption.model);
-  const [isGeneratingCaption, setIsGeneratingCaption] = useState(false);
+  // The background preset waterfall's caption leg; the manual regenerate is a
+  // mutation — the button spins on either (see isGeneratingCaption below).
+  const [bgCaptionPending, setBgCaptionPending] = useState(false);
   const captionRequestRef = useRef(0);
   const captionJobRef = useRef('');
 
@@ -257,7 +259,6 @@ export const CoverStudio: React.FC<CoverStudioProps> = ({ coverSource }) => {
   const onScorePlaying = (playing: boolean) => { setScorePlaying(playing); if (playing) setScoreStarts(n => n + 1); };
   // A new object each call, so asking to stop is acted on even when nothing was playing from a range.
   const playScore = (range: ScoreRange | null) => setScorePlay({ range });
-  const [scoreDetailsSaving, setScoreDetailsSaving] = useState(false);
   // ½×/2× on the score tempo, for when the transcriber counted half or double time.
   const [scoreTempoScale, setScoreTempoScale] = useState(() => restore('scoreTempoScale', { abc: '', factor: 1 }));
   const [scoreDetailsConfirm, setScoreDetailsConfirm] = useState(false);
@@ -531,7 +532,8 @@ export const CoverStudio: React.FC<CoverStudioProps> = ({ coverSource }) => {
     if (typeof assetId === 'string' && assetId) {
       const meta = f['cover-studio-metadata'] as AudioMetadata | null, found = f['cover-studio-analysis'] as AudioAnalysis | null;
       void openUploadedAsset(assetId, sourceLookupRef.current, meta && found ? { metadata: meta, analysis: found } : undefined)
-        .catch(err => showToast(String((err as Error).message)));
+        // Transport failures already toast via the global handler.
+        .catch(err => { if (!(err instanceof ApiError)) showToast(String((err as Error).message)); });
     }
   };
 
@@ -614,11 +616,13 @@ export const CoverStudio: React.FC<CoverStudioProps> = ({ coverSource }) => {
       } else if (audioUrl) {
         setIsAnalyzing(true);
         try {
-          const r = await fetch('/api/analyze', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ audioUrl }) });
-          const d = r.ok ? await r.json() : null;
-          if (d && sourceLookupRef.current === lookup) setAnalysis({ bpm: d.bpm || 120, key: `${d.key || 'C'} ${d.scale || 'major'}`, scale: d.scale });
+          // Silent: a failed analysis just leaves the 120 / C major defaults.
+          const d = await apiClient.post<{ bpm?: number; key?: string; scale?: string }>('/analyze', { audioUrl }, { silent: true });
+          if (sourceLookupRef.current === lookup) setAnalysis({ bpm: d.bpm || 120, key: `${d.key || 'C'} ${d.scale || 'major'}`, scale: d.scale });
         } catch { /* leave defaults; user can override */ }
-        finally { if (sourceLookupRef.current === lookup) setIsAnalyzing(false); }
+        // Unconditional: a guarded reset stuck the spinner forever when the
+        // source switched to one that needed no analysis (stored bpm/key).
+        finally { setIsAnalyzing(false); }
       }
     })();
     showToast(t('cover.loadedFromLibrary', 'Loaded source from library'));
@@ -712,7 +716,11 @@ export const CoverStudio: React.FC<CoverStudioProps> = ({ coverSource }) => {
         if (useDetectedDetails && opened?.analysis) setAnalysis(opened.analysis);
         const dataset = await lookupDatasetMetadata({ sourceAudioUrl: d.audio_url });
         if (sourceLookupRef.current === lookup && dataset) applyDatasetMetadata(dataset, lyricEdit, instrumentalEdit);
-      } catch {} finally { if (sourceLookupRef.current === lookup) { setIsUploading(false); setIsAnalyzing(false); } }
+      } catch (err) {
+        // Transport failures already toast via the global handler; surface only
+        // domain errors (a failed cover-draft job throws a plain Error).
+        if (!(err instanceof ApiError)) showToast(err instanceof Error ? err.message : String(err));
+      } finally { if (sourceLookupRef.current === lookup) { setIsUploading(false); setIsAnalyzing(false); } }
       return;
     }
 
@@ -769,19 +777,26 @@ export const CoverStudio: React.FC<CoverStudioProps> = ({ coverSource }) => {
   };
 
   // ── Lyrics search ──
-  const handleSearchLyrics = async () => {
-    if (!songArtist.trim() || !songTitle.trim()) { showToast(t('cover.enterArtistTitle')); return; }
-    lyricEditRef.current++;
-    setIsSearchingLyrics(true);
-    try {
-      const result = await lireekApi.searchSongLyrics(songArtist.trim(), songTitle.trim());
+  const searchLyricsMut = useMutation({
+    mutationFn: ({ artist, title }: { artist: string; title: string }) => lireekApi.searchSongLyrics(artist, title),
+    onSuccess: (result, vars) => {
       setLyrics(result.lyrics);
       setLyricsSource(null);
       if (result.title) setSongTitle(result.title);
       showToast(t('cover.lyricsFound'));
-      if (sourceFileName) saveTrackCacheEntry(sourceFileName, { lyrics: result.lyrics, artist: songArtist.trim(), title: result.title || songTitle.trim() });
-    } catch (err: any) { showToast(err.message || t('cover.noLyricsFound')); }
-    finally { setIsSearchingLyrics(false); }
+      if (sourceFileName) saveTrackCacheEntry(sourceFileName, { lyrics: result.lyrics, artist: vars.artist, title: result.title || vars.title });
+    },
+    onError: (err: any) => {
+      // Transport failures already toast via the global handler; surface only
+      // domain errors (no lyrics found, etc.).
+      if (!(err instanceof ApiError)) showToast(err.message || t('cover.noLyricsFound'));
+    },
+  });
+  const isSearchingLyrics = searchLyricsMut.isPending;
+  const handleSearchLyrics = () => {
+    if (!songArtist.trim() || !songTitle.trim()) { showToast(t('cover.enterArtistTitle')); return; }
+    lyricEditRef.current++;
+    searchLyricsMut.mutate({ artist: songArtist.trim(), title: songTitle.trim() });
   };
 
   // ── Apply preset to global UI (adapter bar + mastering reference) ──
@@ -830,13 +845,13 @@ export const CoverStudio: React.FC<CoverStudioProps> = ({ coverSource }) => {
       if (!current()) return;
       // Find caption — waterfall: generations → profiles → LLM
       if (token && sourceAssetId && coverDraftId && coverDraftRevision && !advancedMode) {
-        setIsGeneratingCaption(true);
+        setBgCaptionPending(true);
         const pending = resolveCaptionOnNode(artist.id, false);
         const request = captionRequestRef.current;
         void pending
           .then(caption => { if (caption !== null) setArtistCaption(caption); })
           .catch(err => console.warn('[CoverStudio] Caption generation failed:', err))
-          .finally(() => { if (captionRequestRef.current === request) setIsGeneratingCaption(false); });
+          .finally(() => { if (captionRequestRef.current === request) setBgCaptionPending(false); });
       } else {
       let caption = '';
       // Step 1: Try generation captions
@@ -870,11 +885,11 @@ export const CoverStudio: React.FC<CoverStudioProps> = ({ coverSource }) => {
         const sel = loadSelections();
         const { provider, model } = sel.coverCaption;
         if (provider) {
-          setIsGeneratingCaption(true);
+          setBgCaptionPending(true);
           lireekApi.generateCaption(artist.id, { provider, model: model || undefined })
             .then(res => { if (current() && res.caption) setArtistCaption(res.caption); })
             .catch(err => console.warn('[CoverStudio] Caption generation failed:', err))
-            .finally(() => setIsGeneratingCaption(false));
+            .finally(() => setBgCaptionPending(false));
         }
       }
       }
@@ -908,22 +923,28 @@ export const CoverStudio: React.FC<CoverStudioProps> = ({ coverSource }) => {
     sel.coverCaption = { ...sel.coverCaption, model };
     saveSelections(sel);
   };
-  const handleRegenerateCaption = async () => {
+  const captionMut = useMutation({
+    mutationFn: async ({ artistId, provider, model }: { artistId: number; provider: string; model: string }) => {
+      if (token && sourceAssetId && coverDraftId && coverDraftRevision && !advancedMode) {
+        return (await resolveCaptionOnNode(artistId, true)) || '';
+      }
+      const res = await lireekApi.generateCaption(artistId, { provider, model: model || undefined, force: true });
+      return res.caption;
+    },
+    onSuccess: caption => { if (caption) setArtistCaption(caption); },
+    onError: (err: any) => {
+      // Transport failures already toast via the global handler; surface only
+      // domain errors (a failed caption job throws a plain Error).
+      if (!(err instanceof ApiError)) showToast(`Caption generation failed: ${err.message}`);
+    },
+  });
+  const isGeneratingCaption = bgCaptionPending || captionMut.isPending;
+  const handleRegenerateCaption = () => {
     if (!selectedArtistId) return;
     const sel = loadSelections();
     const { provider, model } = sel.coverCaption;
     if (!provider) { showToast('Select a Caption LLM provider first'); return; }
-    setIsGeneratingCaption(true);
-    try {
-      if (token && sourceAssetId && coverDraftId && coverDraftRevision && !advancedMode) {
-        const caption = await resolveCaptionOnNode(selectedArtistId, true);
-        if (caption) setArtistCaption(caption);
-        return;
-      }
-      const res = await lireekApi.generateCaption(selectedArtistId, { provider, model: model || undefined, force: true });
-      if (res.caption) setArtistCaption(res.caption);
-    } catch (err: any) { showToast(`Caption generation failed: ${err.message}`); }
-    finally { setIsGeneratingCaption(false); }
+    captionMut.mutate({ artistId: selectedArtistId, provider, model });
   };
 
   const prepareYue2Source = async (): Promise<{ sourceAudioUrl?: string; songId?: string; audioUrl: string }> => {
@@ -1058,14 +1079,20 @@ export const CoverStudio: React.FC<CoverStudioProps> = ({ coverSource }) => {
   // to be confirmed again.
   const [remeter, setRemeter] = useState<{ from: string; pickup: boolean; abc?: string; twoFourBars?: number; error?: string } | null>(null);
   const remeterOpen = remeter?.from === sheetAbc ? remeter : null;
-  const previewRemeter = async (pickup: boolean) => {
+  // No silent filter here: remeterScore is silent, so this popover's error line
+  // is the sole notifier and must show every failure.
+  const remeterMut = useMutation({
+    mutationFn: ({ from, pickup }: { from: string; pickup: boolean }) => yue2CoverApi.remeterScore(from, pickup),
+    onSuccess: (data, vars) => setRemeter(current =>
+      current?.from === vars.from && current.pickup === vars.pickup ? { ...current, ...data } : current),
+    onError: (err, vars) => setRemeter(current =>
+      current?.from === vars.from && current.pickup === vars.pickup
+        ? { ...current, error: err instanceof Error ? err.message : String(err) } : current),
+  });
+  const previewRemeter = (pickup: boolean) => {
     if (!token) return;
-    const from = sheetAbc;
-    const settle = (result: object) => setRemeter(current =>
-      current?.from === from && current.pickup === pickup ? { ...current, ...result } : current);
-    setRemeter({ from, pickup });
-    try { settle(await yue2CoverApi.remeterScore(from, pickup)); }
-    catch (err) { settle({ error: (err as Error).message }); }
+    setRemeter({ from: sheetAbc, pickup });
+    remeterMut.mutate({ from: sheetAbc, pickup });
   };
   const applyRemeter = () => {
     if (remeterOpen?.abc && prep.applyStructuralOp({ kind: 'replace', abc: remeterOpen.abc })) setRemeter(null);
@@ -1087,12 +1114,14 @@ export const CoverStudio: React.FC<CoverStudioProps> = ({ coverSource }) => {
   const scoreKey = coverScoreKeyLabel(sheetAbc).replace(/(major|minor)$/, m => m[0].toUpperCase() + m.slice(1));
   const scoreDetailsDiffer = yue2Mode && datasetAnalysis && !!analysis && scoreBpm > 0 && !!scoreKey &&
     (Math.round(analysis.bpm) !== scoreBpm || analysis.key.toLowerCase() !== scoreKey.toLowerCase());
-  const saveScoreDetails = async () => {
-    if (!token || !scoreDetailsDiffer) return;
-    const key = sourceKey;
-    let bpm = scaledScoreBpm, musicalKey = scoreKey;
-    setScoreDetailsSaving(true);
-    try {
+  // Both legs are silent — the sheet's "Save to dataset:" line is the sole
+  // notifier, so onError shows every failure. The source key travels as a
+  // variable: if the source changed while the save was in flight, the write
+  // still succeeded but its bpm/key belong to the old source, so only the
+  // toast applies — not the analysis state.
+  const scoreDetailsMut = useMutation({
+    mutationFn: async (key: string) => {
+      let bpm = scaledScoreBpm, musicalKey = scoreKey;
       if (sourceAssetId && coverDraftId && coverDraftRevision && !advancedMode) {
         const saved = await coverWorkflowApi.saveScoreDetails(coverDraftId,
           coverDraftRevision, sheetAbc, scoreTempoFactor);
@@ -1100,13 +1129,21 @@ export const CoverStudio: React.FC<CoverStudioProps> = ({ coverSource }) => {
       } else {
         await yue2CoverApi.saveDatasetDetails({ ...sectionSource(), bpm, key: musicalKey });
       }
-      if (sourceKeyRef.current === key) {
-        setAnalysis({ bpm, key: musicalKey, scale: musicalKey.split(' ')[1] });
+      return { bpm, key: musicalKey, stale: sourceKeyRef.current !== key };
+    },
+    onSuccess: ({ bpm, key, stale }) => {
+      if (!stale) {
+        setAnalysis({ bpm, key, scale: key.split(' ')[1] });
         setBpmOverride(null); setKeyOverride(null);
       }
       showToast('Tempo and key saved to the dataset');
-    } catch (err: any) { setSheetError(`Save to dataset: ${err.message}`); }
-    finally { setScoreDetailsSaving(false); }
+    },
+    onError: (err: any) => setSheetError(`Save to dataset: ${err.message}`),
+  });
+  const scoreDetailsSaving = scoreDetailsMut.isPending;
+  const saveScoreDetails = () => {
+    if (!token || !scoreDetailsDiffer) return;
+    scoreDetailsMut.mutate(sourceKey);
   };
 
   // ── Generation ──
@@ -1447,9 +1484,11 @@ export const CoverStudio: React.FC<CoverStudioProps> = ({ coverSource }) => {
           console.log('[CoverStudio] Auto-recombine controls:', JSON.stringify(effectiveControls));
           console.log('[CoverStudio] Stem names:', sepStems.map(s => `[${s.index}] ${s.name}`).join(', '));
           const blob = await recombineStems(sepJobId, effectiveControls);
-          // Upload recombined WAV to get a server-side URL; on failure keep the original.
+          // Upload recombined WAV to get a server-side URL; on failure keep the
+          // original. Silent — that fallback is deliberate, not an error worth
+          // a global toast.
           try {
-            const { audio_url } = await apiClient.upload<{ audio_url?: string }>('/upload/audio', [{ field: 'audio', file: blob, name: 'recombined-stems.wav' }]);
+            const { audio_url } = await apiClient.upload<{ audio_url?: string }>('/upload/audio', [{ field: 'audio', file: blob, name: 'recombined-stems.wav' }], { silent: true });
             if (audio_url) {
               effectiveSourceUrl = audio_url;
               console.log('[CoverStudio] Using recombined stems:', audio_url);
@@ -1556,8 +1595,7 @@ export const CoverStudio: React.FC<CoverStudioProps> = ({ coverSource }) => {
     let timedOut = false;
     let outcome: 'succeeded' | 'failed' | 'cancelled' | 'timeout' = 'failed';
     try {
-      await waitForSnapshot(serverKey('shell-queue/generation-status', { id: jobId }),
-        signal => generateApi.status(jobId, { signal }),
+      await waitForQuery<GenerationJob>(generationStatusOptions(jobId),
         s => !timedOut && !['succeeded', 'failed', 'cancelled'].includes(s.status), s => {
           const tk = timer.tick(s.status);
           // Server sends 0-100; normalise to 0-100 for display
@@ -1612,10 +1650,13 @@ export const CoverStudio: React.FC<CoverStudioProps> = ({ coverSource }) => {
   // Cancel the currently-running cover. The poll sees the cancelled status,
   // resolves, and the queue advances to the next item.
   const handleCancel = async () => {
+    let cancelled = false;
     if (coverRenderJobRef.current && token) {
-      await workflowApi.cancel(coverRenderJobRef.current).catch(() => {});
-    } else if (activeJobId) { try { await generateApi.cancel(activeJobId); } catch {} }
-    if (queueItemId) failManualQueueItem(queueItemId, 'Cancelled by user');
+      try { await workflowApi.cancel(coverRenderJobRef.current); cancelled = true; } catch {}
+    } else if (activeJobId) { try { await generateApi.cancel(activeJobId); cancelled = true; } catch {} }
+    // Only claim cancellation when the server confirmed it — a failed cancel
+    // leaves the job running, and the queue item must stay in flight.
+    if (queueItemId && cancelled) failManualQueueItem(queueItemId, 'Cancelled by user');
   };
 
   const handleClearSource = () => {

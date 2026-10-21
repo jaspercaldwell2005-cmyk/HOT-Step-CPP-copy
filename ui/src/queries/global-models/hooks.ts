@@ -7,6 +7,6 @@ export const useVram = () => useQuery(vramOptions());
 export function useReferences() {
   const client = useQueryClient();
   const query = useQuery(referencesOptions());
-  const refresh = useCallback(() => queryManager.keys(client, referencesOptions().queryKey), [client]);
+  const refresh = useCallback(() => queryManager.invalidate(client, referencesOptions().queryKey), [client]);
   return { references: query.data?.references ?? [], refresh };
 }

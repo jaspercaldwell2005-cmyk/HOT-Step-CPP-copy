@@ -164,13 +164,16 @@ export interface InstaWorkflowInput {
   expectedBackend: string; coResident: boolean; cacheLmCodes: boolean;
 }
 
+// The Insta-Gen panel displays every one of these failures itself (its inline
+// error line covers the submit leg and the SSE job follow alike), so the JSON
+// legs stay silent — one notifier per failure.
 export const instaWorkflowApi = {
   preview: (input: InstaWorkflowInput, key = crypto.randomUUID()) =>
-    workflowApi.submit('insta-preview', key, input as unknown as Record<string, unknown>),
+    workflowApi.submit('insta-preview', key, input as unknown as Record<string, unknown>, { silent: true }),
   direct: (input: InstaWorkflowInput, key = crypto.randomUUID()) =>
-    workflowApi.submit('insta-direct', key, input as unknown as Record<string, unknown>),
+    workflowApi.submit('insta-direct', key, input as unknown as Record<string, unknown>, { silent: true }),
   approve: (documentId: string, revision: number, key = `approve:${documentId}:${revision}`) =>
-    workflowApi.submit('insta-approve', key, { documentId, revision }),
+    workflowApi.submit('insta-approve', key, { documentId, revision }, { silent: true }),
   get: workflowApi.get,
   list: workflowApi.list,
   cancel: workflowApi.cancel,

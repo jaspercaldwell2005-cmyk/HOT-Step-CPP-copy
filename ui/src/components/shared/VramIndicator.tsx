@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useVram } from '../../queries/global-models/hooks';
 import { loadedModelsOptions } from '../../queries/global-models/options';
 import { apiClient } from '../../services/httpClient';
@@ -27,7 +27,13 @@ export const VramIndicator: React.FC = () => {
   const [pos, setPos] = useState<{ top?: number; bottom?: number; left: number } | null>(null);
   const loadedQuery = useQuery({ ...loadedModelsOptions(), enabled: open });
   const loaded = loadedQuery.data?.loaded ?? null;
-  const [unloading, setUnloading] = useState<string | null>(null);
+  // No onError: this renders no inline error line, so the global handler is
+  // the notifier for a failed unload.
+  const unloadMut = useMutation({
+    mutationFn: (label: string) => apiClient.post('/logs/models-unload', { label }),
+    onSuccess: () => { void queryManager.invalidate(client, sharedKeys.loadedModels(), sharedKeys.vram()); },
+  });
+  const unloading = unloadMut.isPending ? unloadMut.variables : null;
   const wrapRef = useRef<HTMLDivElement>(null);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -53,16 +59,6 @@ export const VramIndicator: React.FC = () => {
     if (closeTimer.current) clearTimeout(closeTimer.current);
     closeTimer.current = setTimeout(() => setOpen(false), 160);
   }, []);
-
-  const unload = useCallback(async (label: string) => {
-    setUnloading(label);
-    try {
-      await apiClient.post('/logs/models-unload', { label });
-      await queryManager.keys(client, sharedKeys.loadedModels(), sharedKeys.vram());
-    } catch { /* ignore */ } finally {
-      setUnloading(null);
-    }
-  }, [client]);
 
   if (!vram || vram.total_mb <= 0) return null;
 
@@ -115,7 +111,7 @@ export const VramIndicator: React.FC = () => {
                   {m.in_use && <span className="text-[9px] text-amber-500 uppercase">in use</span>}
                   <span className="text-[10px] text-zinc-500 font-mono">{(m.mb / 1024).toFixed(1)} GB</span>
                   <button
-                    onClick={() => unload(m.label)}
+                    onClick={() => unloadMut.mutate(m.label)}
                     disabled={m.in_use || unloading === m.label}
                     title={m.in_use ? "In use — can't unload right now" : `Unload ${m.label}`}
                     className="w-5 h-5 rounded flex items-center justify-center text-zinc-500 hover:text-red-400 hover:bg-red-500/10 transition-colors disabled:opacity-30 disabled:hover:text-zinc-500 disabled:hover:bg-transparent"

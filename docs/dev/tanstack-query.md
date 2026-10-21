@@ -24,14 +24,81 @@ the 354-test baseline (2 pre-existing `.css` import failures), lint at or below
 baseline with zero new issues, P2 exit-criteria greps pass. Known-slow routes
 (adapter scan/browse, Whisper retranscribe, mastering run, external LLM calls)
 pass `SLOW_ROUTE_TIMEOUT_MS` (300 s) instead of the 60 s default. The Scale
-table and F1 ledger are a pre-sweep snapshot.
+table and F1 ledger are a pre-migration snapshot (the `useMutation` count in
+particular is superseded by P3).
 
-**P2 residuals (close in P3):** (1) component-level error toasts on command
-failures now double-toast with the interceptor until they are removed (~14
-files, guardrail 1 — the interceptor is the single notifier); (2) sidecar text
-reads (`queries/*/lyrics.ts`) stay on raw fetch — outside the JSON/upload
-scope and the `src/services` grep; (3) XHR uploads have no timeout (a stalled
-upload hangs) — pre-existing.
+**Status (2026-10-22):** P3 is executed on branch `tanstack-p3-mutations` —
+every named component write site now owns a `useMutation`: SeedManagerDrawer ×3,
+CoverArtPromptModal submit (and its prompt-preview read moved off raw fetch onto
+`apiClient.post`), Yue2LmAdapterDropdown importComfy, MetadataEditorModal
+save+upload, the SettingsPanel nuke handlers + env save + restart (nuke and stem
+storage are now standalone `DangerZone` / `StemStorage` components; the env form's
+two hand-rolled state machines became mutations), and DataFolderPanel's imperative
+`run()` busy/error/reload machine became four named mutations with
+`queryManager` invalidation. The double-toast sweep is done: the interceptor is
+the one notifier for command failures, single-caller commands bake `silent: true`
+into the service function (comment names the owning component), multi-caller ones
+thread `ClientOptions`. Error messages moved to i18n `api.error.*` keys
+(`en.json`, fallback) so no raw status code reaches end users; the `HttpStatus`
+const in `apiError.ts` names every compared status — test files keep raw
+literals deliberately, they pin the wire contract. Date formatting consolidated
+in `utils/dateUtils.ts`. Gap fills: SettingsPanel restart fetches →
+`shutdownApi`; CuratedProfileModal's JSON calls → `apiClient` (its
+curated-profile stream at `CuratedProfileModal.tsx:102` stays on raw fetch — a
+documented SSE exception — in the F3 keep-as-is list below). The P2 store-write sweep closed
+the last two `writeAndInvalidate` bypasses: `backendStore.switchBackend` (its
+result-dependent plan now runs through a holder captured by the write) and
+`trainingStore.runPreparation` (starting a chain invalidates the dataset's
+preparation list, which the stages panel polls). Verified: `tsc -b` clean, full
+UI suite 368 tests (2 pre-existing `.css` import failures; two httpClient message
+pins updated to the localized fallback), lint 853 (below the 863 baseline, zero
+new), check-docs ok, P3 exit-criteria greps pass. One pre-existing timing flake
+observed (`queries/training-runs/hooks.test.ts`, "rejects job adoption"), not
+introduced by this branch.
+
+**P3 decisions:** (1) Hook extraction follows the `useCoverArtGeneration` pattern:
+a named hook only when its lifecycle state is reused or the component would hold
+more than one concern — single-use commands stay inline, one `useMutation` per
+command; store writes (postProcessStore et al.) are conformant by design on
+`writeAndInvalidate`, hooks cannot run there. (2) No success toasts where an
+inline result line or state change is the feedback (nuke counts, DataFolderPanel's
+new location); contextual `toast.success` only where nothing else tells the user
+it worked. (3) Bare handler references in JSX (`onClick={fn}`); a zero-variable
+mutation cannot pass `mutate` itself — tsc rejects it (a click event is not
+assignable to `void` variables) and the dummy-parameter workaround trips
+`@typescript-eslint/no-unused-vars` — so the minimal form is a one-line named
+handler. (4) Single-use API wrappers are inlined into the mutation body, not
+broken out as functions. (5) File-local render helpers stay file-local when their
+copies are intentionally different (MonitorPanel vs Yue2BatchPanel `StatusIcon`:
+different status unions, icons, sizes).
+
+**Status (2026-10-22, post-P3 mutation audit):** a full write-site audit
+(rules R1–R8) confirmed
+the P1–P3 exit greps but found what they cannot see: ~30 double-notification sites
+(the global axios toast and an inline component error firing together), one
+correctness bug (SongBuilder's optimistic pre-write with no rollback), a
+swallowed-failure restart path, and ~40 hand-rolled write sites that should be
+`useMutation`. The fix series on this branch closes it in separate commits: the
+double-notification fixes via `silent` bakes or catch filters so
+the interceptor at `services/axiosClient.ts` stays the one notifier; the
+correctness fixes (SongBuilder `onMutate` snapshot + `onError` restore, CoverStudio
+analyze and empty-catch paths, the restart failure split, cancel-on-success); and
+every remaining component write site — CoverStudio ×4, MidiStudio's four commands,
+VramIndicator, MasteringSection, SongBuilder, the Yue2Cover build cluster (its
+hand-rolled `call()` helper replaced by per-command mutations) and the whole
+training-studio cluster — converted to `useMutation`, which retires `runCommand`
+in favour of the `trainingWritePlan` invalidation plan. The remaining residuals stay open on their own phases —
+the storm cluster with P4, F4#5/#8/#12 with P6, plus the sanctioned SSE stream
+and sidecar text reads (all tracked in the F3/F4 ledgers and phase table above).
+
+**P2 residuals still open:** (2) sidecar text reads (`utils/wordLrcUtils.ts:57`,
+`utils/lrcUtils.ts:222`) stay on raw fetch — a text payload read through the shared
+`queries/shell-queue/lyrics.ts` keys, outside the JSON/upload transport. Residual
+(3), XHR uploads with no timeout (a stalled upload hangs), is closed by the
+post-P3 audit series: `httpClient.upload` now sets `xhr.timeout` to
+`SLOW_ROUTE_TIMEOUT_MS` and routes the timeout through the same failure path.
+Residual (1), the double-toast sweep, is closed by P3 plus the post-P3 mutation
+audit series above.
 
 ## Foundation in place
 
@@ -46,16 +113,16 @@ upload hangs) — pre-existing.
 Full contract: [ui-server-state.md](ui-server-state.md). This page audits
 against it.
 
-## Scale (non-test grep, 2026-10-20)
+## Scale (non-test grep, re-measured 2026-10-23)
 
 | API | Sites | Note |
 |---|---|---|
-| `useQuery` | 116 sites, 75 files | Declarative reads — the established norm |
-| `useMutation` | **1** (`components/midi-studio/MidiStudio.tsx:47`) | Every other write is an imperative call + manual cache follow-up |
-| `queryClient.fetchQuery` | **73** | Deprecated in 5.104.x — F1 |
+| `useQuery` | 121 sites, 81 files | Declarative reads — the established norm |
+| `useMutation` | **81** calls / 32 files | Writes carry a visible pending/error lifecycle (F2 closed; F4#1 done) |
+| `queryClient.fetchQuery` | **0** | Removed by P1 (renamed to `queryClient.query()`) — F1 done |
 | `prefetchQuery`, `ensureQueryData` | 0, 0 | Not used |
 | `getQueryData` | 1 (`queries/sseBridge.ts:96`) | Cache read inside the update guard — correct usage, not deprecated |
-| `useQueryClient` | 39 files | Mostly manual invalidation after writes |
+| `useQueryClient` | 44 files | Mostly to call the central `queryManager` invalidation helpers |
 
 ## Findings
 
@@ -135,17 +202,26 @@ command layer. The recommendation is scoped accordingly:
   Yue2LmAdapterDropdown importComfy (`Yue2LmAdapterDropdown.tsx:452–477`),
   MetadataEditorModal save+upload, SettingsPanel nuke handlers + env save.
 - **In zustand stores** (trainingStore, vstChainStore, backendStore,
-  audioGenQueueStore): hooks cannot be used. The existing `runCommand`
-  pattern (`queries/training-runs/queries.ts:137–149`: execute → invalidate on
-  success, no retry) is the right shape; standardize it as a shared helper so
-  every store write gets the same lifecycle (P2).
+  audioGenQueueStore): hooks cannot be used. The `runCommand` pattern that
+  pioneered the shape (execute → invalidate on success, no retry) was
+  standardized as a shared helper so every store write gets the same lifecycle
+  (P2).
+
+**Resolved:** P2 standardized the store writes on `writeAndInvalidate`
+(`queries/writes.ts`); P3 converted every named component site to `useMutation`
+(status block above). The post-P3 mutation audit series finished the job: the
+remaining component sites — including the whole training-studio cluster — are
+now `useMutation`, and the now-dead `runCommand` was deleted from
+`queries/training-runs/queries.ts` (its invalidation semantics live on as
+`trainingWritePlan`). The full write-site and double-notification ledgers were tracked in the 2026-10-22 mutation audit (now complete and
+removed); they are not re-listed here.
 
 ### F3 — Reads and timers bypassing the cache
 
 | Site | Pattern | Recommendation | Phase |
 |---|---|---|---|
-| `components/storm/DriftPanel.tsx:304–318` | raw `fetch` of `/api/generate/storm/control?streamId=` on a 2 s `setInterval` into `useState`; no error state (silent `catch {}`) | `useQuery({ queryKey: stormControl(streamId), refetchInterval: playing ? 2000 : false })`. **Not covered by the architecture.md disposition table — add a row when fixing** | P4 |
-| `components/library/CoverArtPromptModal.tsx:73–95` | preview POST on modal open with hand-rolled `setLoadingPreview`; errors swallowed to empty prompt | `useQuery({ enabled: !!song })` for the preview; submit → mutation (job follow is already a QueryObserver + `pollWhile`) | P4 / P3 |
+| `components/storm/DriftPanel.tsx:239,261,280,309` + `hooks/useStreamAudio.ts:81,233,335` | the storm cluster: DriftPanel's raw `fetch` control POSTs (silent `catch {}`) and 2 s `setInterval` poll into `useState`, plus useStreamAudio's three control fetches (its L121 stream is a media blob — stays raw) | the poll → `useQuery({ queryKey: stormControl(streamId), refetchInterval: playing ? 2000 : false })`; the control POSTs → `apiClient` with real error handling. **Not covered by the architecture.md disposition table — add a row when fixing** | P4 |
+| `components/library/CoverArtPromptModal.tsx:73–95` | preview POST on modal open with hand-rolled `setLoadingPreview`; errors swallowed to empty prompt | preview → `apiClient.post` in the open handler (**done** P3 — one-shot form-seeding read, not a query: strategy table); submit → mutation (**done** P3, `useCoverArtGeneration`) | P4 / **done** (P3) |
 | `stores/vstChainStore.ts:222–231` | module-level 1.5 s `setInterval` polling `vstApi.openGuis()` into store state, self-clearing when empty | query with the existing `pollWhile` helper (proven pattern: `capabilitiesOptions`, `queries/global-models/options.ts:34–37`) | P4 |
 | `components/training-studio/NewDatasetWizard.tsx:71–97` | 400 ms debounced scan with a monotonic-seq race guard on top of `fetchQuery(tq.scanPreview(...))` | `useQuery` + debounce + `keepPreviousData` deletes the seq-guard machinery | P4 |
 | Upload cluster: `LatentImport.tsx:48`, `MetadataEditorModal.tsx:68`, `MidiStudio.tsx:98`, `StemBuilder.tsx:174`, `SourceSelector.tsx:64`, `RepaintStudio.tsx:191`, `CoverStudio.tsx:609, 692, 720, 929, 1451` | seven near-identical hand-rolled multipart blocks (token header, error parse, `setUploading`/`setError`) duplicating `apiClient.upload()` (`services/httpClient.ts:129–171`), which already has progress + abort | one shared upload mutation wrapping `apiClient.upload` (P2) | P2 |
@@ -163,19 +239,19 @@ live note SSE (`MidiPlayer.tsx:102–139`), and the download-progress bridge
 
 | # | Site | Issue | Fix | Phase |
 |---|---|---|---|---|
-| 1 | app-wide | near-total absence of `useMutation` (1 site) | F2: component mutations + shared store write helper | P2/P3 |
-| 2 | `App.tsx:388–429` | hand-rolled disco-extraction loop: raw POST then 360×5 s `setTimeout` polling `fetchQuery(songOptions, staleTime 0)`; bypasses retry policy and never invalidates `SONG_VIEWS` | `useQuery` + `refetchInterval: pollWhile(...)`; invalidate song views on completion | P4 |
-| 3 | `components/lyric-studio/RecordingsTab.tsx:123` | inline ad-hoc key + fn byte-equivalent to `generationStatusOptions` (`queries/shell-queue/queue.ts:27–31`); bypasses the factory and its `retry: false` | call the factory | P6 |
-| 4 | `components/insta-gen/InstaGenPanel.tsx:211` | inline duplicate of `songOptions` instead of `readSong` (`queries/shell-queue/queue.ts:68`) | call the factory | P6 |
-| 5 | `components/stem-studio/SourceSelector.tsx:47–51` | second resource for one endpoint: inline `studios/recent-songs` duplicating `recentSongsOptions` (`shell-queue/songs.ts:21–24`); `SONG_VIEWS` lists both, but the divergence (resource name, extra `limit` filter) is a maintenance trap | single canonical read; if `limit` matters, add it to the factory's filters | P6 |
-| 6 | `components/lyric-studio/QueuePanel.tsx:183–187` | third spelling of the LM list (vs `trainingQueries.lmAdapters` and `AdaptersDropdown.tsx:65` local options); `lmFolder` read from localStorage **during render**, so a storage change mid-mount does not re-key | one factory; folder into state, key derives from it | P6 |
+| 1 | app-wide | near-total absence of `useMutation` (1 site) | F2: component mutations + shared store write helper — **done** (P3 + post-P3 mutation-audit series) | P2/P3 / **done** |
+| 2 | `App.tsx:388–429` | hand-rolled disco-extraction loop: raw POST then 360×5 s `setTimeout` polling `fetchQuery(songOptions, staleTime 0)`; bypasses retry policy and never invalidates `SONG_VIEWS` | `useQuery` + `refetchInterval: pollWhile(...)`; invalidate song views on completion — **done** (P3, via `waitForQuery`) | **done** (P3) |
+| 3 | `components/lyric-studio/RecordingsTab.tsx:123` | inline ad-hoc key + fn byte-equivalent to `generationStatusOptions` (`queries/shell-queue/queue.ts:27–31`); bypasses the factory and its `retry: false` | call the factory — **done** (`generationStatusOptions`) | **done** (P6) |
+| 4 | `components/insta-gen/InstaGenPanel.tsx:211` | inline duplicate of `songOptions` instead of `readSong` (`queries/shell-queue/queue.ts:68`) | call the factory — **done** (`readSong`) | **done** (P6) |
+| 5 | `components/stem-studio/SourceSelector.tsx:47–51` | second resource for one endpoint: inline `studios/recent-songs` duplicating `recentSongsOptions` (`shell-queue/songs.ts:21–24`); `SONG_VIEWS` lists both, but the divergence (resource name, extra `limit` filter) is a maintenance trap | single canonical read; if `limit` matters, add it to the factory's filters — **done** (`studioRecentSongsOptions`) | **done** (P6) |
+| 6 | `components/lyric-studio/QueuePanel.tsx:183–187` | third spelling of the LM list (vs `trainingQueries.lmAdapters` and `AdaptersDropdown.tsx:65` local options); `lmFolder` read from localStorage **during render**, so a storage change mid-mount does not re-key | one factory; folder into state, key derives from it — **done** (`lmAdaptersOptions(folder)`, folder from the params store) | **done** (P6) |
 | 7 | `services/stemStudioApi.ts:196–199`, `services/supersepApi.ts:134–135` | service-layer inline duplicates of `extractResultOptions` / `separationResultOptions` (`queries/studios/resources.ts:22–35`) | call the factories | P6 |
-| 8 | `components/cover-studio/Yue2Build.tsx:181` | positional key surgery in `setQueryData`: splices the old session's scope slot into a freshly built tuple to graft cache identity across a session-id change; any 5-slot schema change silently corrupts this write | add a `keys.ts` helper for "same resource, new session scope" and use it | P6 |
-| 9 | `components/stem-studio/RecentExtractions.tsx:13,35–37`, `components/stem-builder/RecentBuilds.tsx:82` | refetch-via-prop-bump: parent increments a numeric prop, child `useEffect` calls `invalidateQueries` | invalidate directly at the mutation site (parents already have the client) | P6 |
-| 10 | `components/lyric-studio/ProviderSelector.tsx:23–26` | invalidate-then-bypass-cache: forced refresh invalidates the providers key, then calls `lireekApi.getProviders()` directly and returns data that never enters the cache it just invalidated | return the query's data (the two `useQuery` observers at L133/L237 already hold it) | P6 |
-| 11 | `SettingsPanel.tsx:107–151` | destructive writes with no local invalidation: `handleNukeLyrics` / `handleNukeProfiles` purge lireek data and invalidate nothing — cached snapshots (e.g. `QueuePanel.tsx:143` generations feed) stay stale until natural expiry; the songs nuke is rescued only indirectly by a parent callback | mutations with invalidation at the write site (cover-lyrics prefixes via `changed()`) | P3 |
+| 8 | `components/cover-studio/Yue2Build.tsx:181` | positional key surgery in `setQueryData`: splices the old session's scope slot into a freshly built tuple to graft cache identity across a session-id change; any 5-slot schema change silently corrupts this write | add a `keys.ts` helper for "same resource, new session scope" and use it — **done** (`withKeyId`) | **done** (P6) |
+| 9 | `components/stem-studio/RecentExtractions.tsx:13,35–37`, `components/stem-builder/RecentBuilds.tsx:82` | refetch-via-prop-bump: parent increments a numeric prop, child `useEffect` calls `invalidateQueries` | invalidate directly at the mutation site (parents already have the client) — **done** (`refreshTrigger` removed; parents invalidate at the completion site) | **done** (P6) |
+| 10 | `components/lyric-studio/ProviderSelector.tsx:23–26` | invalidate-then-bypass-cache: forced refresh invalidates the providers key, then calls `lireekApi.getProviders()` directly and returns data that never enters the cache it just invalidated | return the query's data (the two `useQuery` observers at L133/L237 already hold it) — **done** (reads through the shared `providersOptions()` cache) | **done** (P6) |
+| 11 | `SettingsPanel.tsx:107–151` | destructive writes with no local invalidation: `handleNukeLyrics` / `handleNukeProfiles` purge lireek data and invalidate nothing — cached snapshots (e.g. `QueuePanel.tsx:143` generations feed) stay stale until natural expiry; the songs nuke is rescued only indirectly by a parent callback | mutations with invalidation at the write site (cover-lyrics prefixes via `changed()`) | **done** (P3 — `DangerZone.tsx`, `invalidateEvents`) |
 | 12 | `utils/yue2CaptionSource.ts:226–241` | ad-hoc inline key (no factory) and catches **all** errors into an empty result — a failed request is indistinguishable from "no caption source" | key to a factory; surface the error to the caller | P6 |
-| 13 | `queries/studios/shared.ts:10–13` + `adapterScanOptions` ×2 (`global-models/options.ts:10–14`, `shell-queue/settings.ts:44–48`) | duplicate factories with identical key+fn; consumers split between the copies | one owner per resource; re-point imports | P6 |
+| 13 | `queries/studios/shared.ts:10–13` + `adapterScanOptions` ×2 (`global-models/options.ts:10–14`, `shell-queue/settings.ts:44–48`) | duplicate factories with identical key+fn; consumers split between the copies | one owner per resource; re-point imports — **done** (`shell-queue/settings.ts` re-exports from `global-models/options.ts`) | **done** (P6) |
 | 14 | `components/model-manager/useDownloadStream.ts:16–19` | disabled dummy query as SSE cache slot (`enabled: false`, never-running queryFn, `initialData: []`) — non-standard but intentional and documented (SSE bridge writes the whole frame) | **keep**; record as a sanctioned exception in ui-server-state.md | P6 (doc only) |
 | 15 | `services/yue2CoverApi.ts:198–203` | request body used as query key ("queryable POST") — deliberate, documented, but unbounded key cardinality (every distinct body is a new cache entry gcTime must reap) | **keep** the pattern; add a note + consider bounding `filters` to stable fields | P6 (doc only) |
 | 16 | `components/global-bar/BackendToggle.tsx:32`, `MonitorBar.tsx:29` | side-effect-only `useQuery` subscriptions — liveness of those cache entries coupled to component mount | **keep**; note the coupling in ui-server-state.md | P6 (doc only) |
@@ -562,7 +638,7 @@ Decision rules:
 | Data is displayed, polled, shared across components, or must survive remount | `useQuery` — already the norm (116 sites) |
 | One-shot read that seeds a form/wizard and must never be overwritten by background refetch | imperative `query()` with `staleTime: 0` — the existing pattern (training-data/queries.ts:113–116); the F1 ledger keeps these, renamed only |
 | A write drives visible per-write UI state (pending / error / success) and dirties cached resources | `useMutation` in the component (P3 list) |
-| A write from a zustand store or other non-React code | `writeAndInvalidate` — hooks cannot be used outside components; the `runCommand` precedent (training-runs/queries.ts:137–149) standardized |
+| A write from a zustand store or other non-React code | `writeAndInvalidate` (`queries/writes.ts`) — hooks cannot be used outside components; the shape `runCommand` pioneered, now deleted with its last caller |
 | Queryable POST (idempotent, body in the key) | stays a query — sanctioned exception F4#15, never a mutation |
 
 Structural rules:
@@ -608,10 +684,12 @@ area. Owner areas follow the architecture.md audit.
 | **P1 — deprecation sweep** | Rename all 73 `fetchQuery` → `queryClient.query()` (F1 ledger); update the one doc reference (`ui-server-state.md:133`); add an ESLint `no-restricted-syntax` rule banning `queryClient.fetchQuery` so the sweep is permanent | foundation | Low — mechanical, semantics identical (verified in installed source) | `npx tsc -b` + full UI suite green; zero non-test `fetchQuery` in `ui/src` (grep) |
 | **P2 — HTTP foundation + shared write layer** | Ordered steps: **(1)** migrate `ApiClient`'s JSON methods and `upload()` from fetch/XHR onto one shared axios instance (F5) — upload progress and abort come from the same API, deleting the XHR special case; SSE stays on fetch. **(2)** request interceptor injects the bearer from the auth session's module-level accessor (ending per-call token threading); one response interceptor = the global catch with the target pipeline's filters — GET errors silent by default, `IGNORED_URL_PATTERNS`, `X-Skip-Global-Error` escape header, status-mapped toasts (401 deduped warn + re-auth flow), aborts never toast; `<Toaster>` (react-toastify) in `main.tsx`; default timeout with per-request overrides for slow routes. **(3)** new `queries/writes.ts`: `writeAndInvalidate` for stores (standardized `runCommand` semantics) + `useUpload()` mutation over axios upload. **(4)** new `queries/invalidation.ts` — the global `queryManager` (central invalidation section above; methods wrap today's per-area helpers until P6 closes them over entity composers; SSE bridge mapping derived from it). **(5)** collapse the 7 upload blocks (F3); re-point store writes | foundation + studios | Medium–High — every request path touches the new transport; steps 1–2 land first as their own reviewable change, before 3–5 build on it | `grep "fetch(" src/services` empty outside SSE paths; one interceptor owns error normalization and toasts; no hand-rolled multipart block left; uploads keep progress + abort; store writes share one helper and a required event list; one object owns all invalidation |
 | **P3 — component mutations** | `useMutation` for: SeedManagerDrawer ×3, CoverArtPromptModal submit, Yue2LmAdapterDropdown importComfy, MetadataEditorModal save+upload, SettingsPanel nuke handlers (fixes F4#11) + env save — contextual `toast.success` in `onSuccess`, redundant per-site `setError` pairs deleted (F2), error toasts stay with the axios interceptor; **also remove now-redundant component-level error toasts on command failures app-wide** (~14 files — until this lands, a failed command double-toasts: interceptor + component catch); move `api.ts:542–611` standalone fetches onto `apiClient` with mutation callers | per-area (global-bar, library, settings/shell-queue) | Medium — error UX moves to the transport layer; invalidation moves to the write site | No raw fetch POST/DELETE in those components; nuke handlers invalidate cover-lyrics prefixes via `queryManager`; no `toast.error` in any query-layer callback (grep) |
-| **P4 — useQuery conversions** | DriftPanel 2 s poll → `refetchInterval` (add its disposition row to architecture.md), CoverArtPromptModal preview → `useQuery(enabled)`, vstChainStore openGuis interval → query + `pollWhile`, NewDatasetWizard scan → `useQuery` + `keepPreviousData` (delete seq guard), App.tsx disco loop → `pollWhile` query | storm, library, global-models, training-data, shell-queue | Medium — polling semantics change; verify intervals match the old cadence | No `setInterval`/`setTimeout` network loops left in those files |
+| **P4 — useQuery conversions** | the storm cluster (DriftPanel 2 s poll → `refetchInterval`, its three control POSTs and `useStreamAudio.ts:81,233,335` → `apiClient`; `useStreamAudio.ts:121` stays a media-blob fetch; add the disposition row to architecture.md), CoverArtPromptModal preview → `useQuery(enabled)`, vstChainStore openGuis interval → query + `pollWhile`, NewDatasetWizard scan → `useQuery` + `keepPreviousData` (delete seq guard), App.tsx disco loop → `pollWhile` query | storm, library, global-models, training-data, shell-queue | Medium — polling semantics change; verify intervals match the old cadence | No `setInterval`/`setTimeout` network loops left in those files; no raw control fetches left in the storm cluster |
 | **P5 — env form refactor** | `useEnvSettingsForm` (scoped section above) | shell-queue | Low–Medium — form now tracks external edits (behavior change, intended) | Draft-safety tests green; manifest row updated |
 | **P6 — entity folders, composer unification, dedup** | Re-org `queries/` into per-entity folders (central invalidation section): extract one key composer per entity shared by registration and invalidation, move hooks and invalidation closures alongside; then duplicate factories (F4#13), inline key duplicates (#3/#4/#5/#6/#7/#12) — trivial once composers exist, Yue2Build key surgery → composer (#8), refreshTrigger props (#9), ProviderSelector bypass (#10); doc-only notes for sanctioned exceptions (#14/#15/#16) | per-area | Medium — large mechanical diff, no behavior change (cache identity is the tuple, not the folder) | Every `queryKey` in an options factory comes from an entity composer; no string-prefix invalidation left (`grep startsWith src/queries` empty); SONG_VIEWS and `workerReads` dissolved into composers; no inline `queryKey`/`queryFn` in components (grep) |
 | **P7 — structural (deferred)** | audioGenQueueStore projection loop; useTrainingStream → cache re-targeting (F3) | shell-queue / training-runs | High — executor redesign | Owner design doc first; no code before review |
+
+**Status as of 2026-10-23:** P1 complete (zero non-test `fetchQuery`); P2/P3 complete (the axios interceptor is the sole error notifier; writes are `useMutation` — F4#1). P4's polling/useQuery conversions (disco loop, storm DriftPanel poll, `vstChainStore` openGuis) landed early under the P3 pass. P6 dedup is mostly done (F4 #3/#4/#5/#6/#8/#9/#10/#13); only #7 and #12 remain.
 
 Ordering: P1 first — it is mechanical, unblocks nothing else's *code* but
 removes the deprecation warnings and locks in the new API. Within P2 the HTTP
@@ -645,5 +723,6 @@ grep -rn "queryKey:" src/components --include="*.tsx" | grep -v "Options()"     
 
 - [ui-server-state.md](ui-server-state.md) — policy contract, key schema, SSE
   bridge docs, consumer manifest (the ownership documents this page audits against).
+- The 2026-10-22 write-site mutation audit (rules R1–R8; the `useMutation` transition and double-notification ledgers) is complete — every item resolved — and its file has been removed.
 - [architecture.md — UI server-state integration audit](architecture.md#ui-server-state-integration-audit) — per-path dispositions and area owners; P4 must add the DriftPanel row.
 - [config.md](config.md) — the env keys the settings form edits, with defaults and restart-required flags.

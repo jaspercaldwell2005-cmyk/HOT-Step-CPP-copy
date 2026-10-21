@@ -40,12 +40,10 @@ export const dataFolderOptions = () => queryOptions({
   staleTime: 0,
 });
 
-/** An explicit adapter-folder scan (a read-only POST). Fresh per click. */
-export const adapterScanOptions = (folder: string) => queryOptions({
-  queryKey: sharedKeys.adapterScan(folder),
-  queryFn: ({ signal }) => adapterApi.scan(folder, { signal }),
-  staleTime: 0,
-});
+/** An explicit adapter-folder scan (a read-only POST). Fresh per click.
+ *  Owned by global-models; re-exported so settings-area consumers keep one
+ *  import surface. */
+export { adapterScanOptions } from '../global-models/options';
 
 /** One directory listing in the file browser. Fresh each time it is opened,
  *  since files come and go; the cache only joins repeated requests. */

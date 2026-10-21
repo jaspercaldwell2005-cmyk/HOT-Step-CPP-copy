@@ -5,13 +5,13 @@
 // - Reference track selector with upload support
 
 import React, { useState, useCallback } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronDown, Upload, Trash2, Sparkles, Music2 } from 'lucide-react';
 import { masteringApi } from '../../services/api';
 // The reference list is global-models' snapshot, shared with the top bar's
 // mastering controls so an upload here refreshes both.
 import { referencesOptions } from '../../queries/global-models/options';
-import { keysPlan, writeAndInvalidate } from '../../queries/writes';
+import { queryManager } from '../../queries/invalidation';
 import { useAuth } from '../../context/AuthContext';
 import { StyledSelect } from '../shared/StyledSelect';
 import { Toggle } from '../shared/Toggle';
@@ -52,32 +52,33 @@ export const MasteringSection: React.FC<MasteringSectionProps> = ({
   const [open, setOpen] = useState(false);
   const queryClient = useQueryClient();
   const references: ReferenceTrack[] = useQuery(referencesOptions()).data?.references ?? [];
-  const [uploading, setUploading] = useState(false);
+  // The write dirties the shared reference list (top bar included); failures
+  // toast via the global handler — there is no inline error line here.
+  const uploadMut = useMutation({
+    mutationFn: (file: File) => masteringApi.uploadReference(file),
+    onSuccess: result => {
+      void queryManager.invalidate(queryClient, referencesOptions().queryKey);
+      onMasteringReferenceChange(result.name);
+    },
+  });
+  const uploading = uploadMut.isPending;
 
-  const handleUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !token) return;
+    uploadMut.mutate(file);
+    // The File is already captured — clearing now lets the same file be
+    // re-selected after a failure.
+    e.target.value = '';
+  }, [token, uploadMut]);
 
-    try {
-      setUploading(true);
-      // The write dirties the shared reference list (top bar included).
-      const result = await writeAndInvalidate(queryClient, () => masteringApi.uploadReference(file),
-        keysPlan(referencesOptions().queryKey));
-      onMasteringReferenceChange(result.name);
-    } catch { /* transport failure already toasted by the global handler */ } finally {
-      setUploading(false);
-      e.target.value = '';
-    }
-  }, [token, queryClient, onMasteringReferenceChange]);
-
-  const handleDelete = useCallback(async (name: string) => {
-    if (!token) return;
-    try {
-      await writeAndInvalidate(queryClient, () => masteringApi.deleteReference(name),
-        keysPlan(referencesOptions().queryKey));
+  const deleteMut = useMutation({
+    mutationFn: (name: string) => masteringApi.deleteReference(name),
+    onSuccess: (_data, name) => {
+      void queryManager.invalidate(queryClient, referencesOptions().queryKey);
       if (masteringReference === name) onMasteringReferenceChange('');
-    } catch { /* transport failure already toasted by the global handler */ }
-  }, [token, queryClient, masteringReference, onMasteringReferenceChange]);
+    },
+  });
 
   return (
     <div className="space-y-1 pt-3 border-t border-zinc-200 dark:border-white/5">
@@ -142,7 +143,7 @@ export const MasteringSection: React.FC<MasteringSectionProps> = ({
                   <Music2 size={14} className="text-amber-400 flex-shrink-0" />
                   <span className="text-xs text-amber-300 truncate flex-1">{masteringReference}</span>
                   <button
-                    onClick={() => handleDelete(masteringReference)}
+                    onClick={() => deleteMut.mutate(masteringReference)}
                     className="p-1 rounded hover:bg-red-500/10 text-zinc-500 hover:text-red-400 transition-colors flex-shrink-0"
                     title="Delete reference"
                   >

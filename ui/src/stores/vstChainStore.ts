@@ -2,7 +2,8 @@ import { projectQuery } from '../queries/global-models/projection';
 import { vstPresetsApi } from '../queries/global-models/presets';
 import type { MonitorStatus } from '../queries/global-models/options';
 import { queryClient } from '../queries/client';
-import { localOptions, monitorOptions } from '../queries/global-models/options';
+import type { ServerKey } from '../queries/keys';
+import { localOptions, monitorOptions, openGuisOptions } from '../queries/global-models/options';
 import { queryManager } from '../queries/invalidation';
 import { keysPlan, writeAndInvalidate } from '../queries/writes';
 import { apiClient } from '../services/httpClient';
@@ -12,6 +13,7 @@ import { apiClient } from '../services/httpClient';
 // and GUI launching. Chain state is persisted server-side.
 
 import { create } from 'zustand';
+import { QueryObserver } from '@tanstack/react-query';
 import { vstApi, type VstPlugin, type VstChainEntry } from '../services/api';
 import { hashImportValue, type VstChainPresetBody } from '../services/preferencesApi';
 import { PresetCollection, type PresetCollectionSnapshot } from '../services/presetCollection';
@@ -101,7 +103,28 @@ interface VstChainState {
   deletePreset: (key: string) => Promise<void>;
 }
 
-let guiPollTimer: ReturnType<typeof setInterval> | null = null;
+let guiPoll: { observer: QueryObserver<{ uids: string[] }, Error, { uids: string[] }, { uids: string[] }, ServerKey>; unsubscribe: () => void } | null = null;
+
+/** Follow the open-GUI read until every editor window has closed. */
+function startGuiPoll() {
+  if (guiPoll) return;
+  const observer = new QueryObserver(queryClient, {
+    ...openGuisOptions(),
+    refetchInterval: 1500,
+    refetchIntervalInBackground: true,
+  });
+  const unsubscribe = observer.subscribe(result => {
+    if (!result.data) return;
+    const open = useVstChainStore.getState().openGuiUids.filter(u => result.data!.uids.includes(u));
+    useVstChainStore.setState({ openGuiUids: open });
+    if (open.length === 0) stopGuiPoll();
+  });
+  guiPoll = { observer, unsubscribe };
+}
+function stopGuiPoll() {
+  guiPoll?.unsubscribe();
+  guiPoll = null;
+}
 
 /** A preset collection whose changes are mirrored into the store. */
 function attachPresets(set: (partial: Partial<VstChainState>) => void) {
@@ -131,7 +154,7 @@ export const useVstChainStore = create<VstChainState>((set, get) => {
   scanPlugins: async () => {
     set({ scanning: true, scanError: null });
     try {
-      await queryManager.keys(queryClient, localOptions('vst-scan', '/vst/scan').queryKey);
+      await queryManager.invalidate(queryClient, localOptions('vst-scan', '/vst/scan').queryKey);
       await queryClient.query(localOptions<{ plugins: VstPlugin[] }>('vst-scan', '/vst/scan'));
       set({ scanning: false });
     } catch (err: any) {
@@ -212,18 +235,7 @@ export const useVstChainStore = create<VstChainState>((set, get) => {
       }));
       // Poll until every editor window has been closed, so the open marker
       // clears when the user closes the window.
-      if (!guiPollTimer) {
-        guiPollTimer = setInterval(async () => {
-          try {
-            const { uids } = await vstApi.openGuis();
-            set(s => ({ openGuiUids: s.openGuiUids.filter(u => uids.includes(u)) }));
-            if (get().openGuiUids.length === 0 && guiPollTimer) {
-              clearInterval(guiPollTimer);
-              guiPollTimer = null;
-            }
-          } catch { /* server unavailable; retry next tick */ }
-        }, 1500);
-      }
+      startGuiPoll();
     } catch { /* transport failure already toasted by the global handler */ }
   },
 

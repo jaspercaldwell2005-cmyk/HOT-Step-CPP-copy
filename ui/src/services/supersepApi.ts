@@ -63,12 +63,14 @@ const API_BASE = '/api/supersep';
 /** Path prefix for apiClient calls (the client already adds `/api`). */
 const P = '/supersep';
 
-/** Start a separation job. Returns the job ID. */
+/** Start a separation job. Returns the job ID. Silent: CoverStudio's
+ *  handleSeparate toasts the failure itself (its "Separation failed" line is
+ *  the sole notifier). */
 export async function startSeparation(
   audioUrl: string,
   level: SeparationLevel = 0,
 ): Promise<string> {
-  const data = await apiClient.post<{ id: string }>(`${P}/separate?level=${level}`, { audioUrl });
+  const data = await apiClient.post<{ id: string }>(`${P}/separate?level=${level}`, { audioUrl }, { silent: true });
   return data.id;
 }
 
