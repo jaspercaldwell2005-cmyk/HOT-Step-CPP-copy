@@ -13,12 +13,12 @@ import {
 } from 'lucide-react';
 import { usePlaylist, type PlaylistItem } from '../../stores/playlistStore';
 import { playFromList, togglePlay, playlistItemToTrack, usePlaybackSelector } from '../../stores/playbackStore';
-import { downloadTrack, downloadAll } from '../../utils/downloadTrack';
+import { downloadTrack, downloadAll } from '@/utils/audio/downloadTrack';
 import { useAuth } from '../../context/AuthContext';
 import type { Song } from '../../types';
 import { useDisguiseMode } from '../../hooks/useDisguiseMode';
-import { SongActionsMenu, songFromPlaylistItem } from '../shared/SongActionsMenu';
-import { CoverImage } from '../shared/CoverImage';
+import { SongActionsMenu, songFromPlaylistItem } from '@/components/shared/songs/SongActionsMenu';
+import { CoverImage } from '@/components/shared/songs/CoverImage';
 
 /** Fraction of row width a swipe must travel to trigger an action. */
 const SWIPE_THRESHOLD = 0.3;

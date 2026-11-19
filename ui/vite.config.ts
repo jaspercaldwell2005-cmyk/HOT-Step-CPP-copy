@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react'
 import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { CSP_HEADER, contentSecurityPolicy } from '../server/src/contracts/csp.ts'
 
 // Metadata-only releases also install a new worker and retire old assets.
@@ -44,6 +45,10 @@ const closeWithUpstream: ProxyOptions['configure'] = (proxy) => {
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), appShellWorker()],
+  resolve: {
+    // Matches tsconfig's `paths`: `@/x` is src/x, so imports stop counting ../
+    alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
+  },
   // Production policy for `vite preview` of a build, so the service worker can be checked under it.
   preview: { headers: { [CSP_HEADER]: contentSecurityPolicy() } },
   server: {

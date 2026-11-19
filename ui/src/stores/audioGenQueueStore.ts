@@ -19,15 +19,15 @@ import { generateApi, withIntentTimeout, fetchAudioBlob } from '../services/api'
 import type { Generation, AlbumPreset } from '../services/lireekApi';
 import { addToPlaylist } from './playlistStore';
 import type { GenerationParams, GenerationJob } from '../types';
-import { MM3_BACKEND_ID } from '../utils/captionForBackend';
-import { yue2CaptionAdapterPath, yue2PickAtEnqueue, YUE2_BACKEND_ID } from '../utils/yue2CaptionSource';
-import { useLmAdapterEnabled } from '../utils/lmAdapterPref';
-import { masterToAlbumEnabled } from '../utils/masterToAlbumPref';
+import { MM3_BACKEND_ID } from '@/utils/lyrics/captionForBackend';
+import { yue2CaptionAdapterPath, yue2PickAtEnqueue, YUE2_BACKEND_ID } from '@/utils/lyrics/yue2CaptionSource';
+import { lmAdapterEnabled } from '@/utils/training/lmAdapterPref';
+import { masterToAlbumEnabled } from '@/utils/training/masterToAlbumPref';
 import { useBackendStore } from './backendStore';
 import type { CreateIntent, WrittenSongIntent } from '../../../server/src/contracts/resolution';
-import { readMm3CaptionSelection } from '../utils/mm3CaptionSource';
-import { readYue2SongSelection, readYue2DatasetForLyricsSet } from '../utils/yue2CaptionSource';
-import { getUseLlmDuration } from '../utils/estimateDuration';
+import { readMm3CaptionSelection } from '@/utils/lyrics/mm3CaptionSource';
+import { readYue2SongSelection, readYue2DatasetForLyricsSet } from '@/utils/lyrics/yue2CaptionSource';
+import { getUseLlmDuration } from '@/utils/format/estimateDuration';
 import { audioQueueApi } from '../services/audioQueueApi';
 import { queryClient } from '../queries/client';
 import { ACTIVE_POLL_MS } from '../queries/contract';
@@ -40,6 +40,8 @@ import type { WorkflowJob } from '../../../server/src/contracts/workflow';
 import { exportQueueBackup, type QueueBackup, type QueueBackupStore } from './audioQueueMigration';
 import { decideQueueOwnerAction } from './audioQueueOwnerDecision';
 import type { AudioIntentItem, ImportAudioQueue } from '../../../server/src/contracts/audioQueue';
+import { writeJson } from '@/utils/storage/storageJson';
+import { emit } from '@/utils/appEvents';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -420,7 +422,7 @@ function writtenSongIntentFor(item: AudioQueueItem): WrittenSongIntent {
     lyricsSetId: item.lyricsSetId, sourceLyricsSetId: item.sourceLyricsSetId,
     artistName: item.artistName, params: item.globalParams,
     settings: {
-      useLlmDuration: getUseLlmDuration(), useLmAdapter: useLmAdapterEnabled(),
+      useLlmDuration: getUseLlmDuration(), useLmAdapter: lmAdapterEnabled(),
       triggerUseFilename: appSettings.triggerUseFilename === true,
       triggerPlacement: appSettings.triggerPlacement === 'append' || appSettings.triggerPlacement === 'replace'
         ? appSettings.triggerPlacement : 'prepend',
@@ -1255,7 +1257,7 @@ export function getSendToPlaylist(): boolean {
 
 /** Write the "Send To Playlist" toggle to localStorage. */
 export function setSendToPlaylist(enabled: boolean): void {
-  localStorage.setItem(SEND_TO_PLAYLIST_KEY, JSON.stringify(enabled));
+  writeJson(SEND_TO_PLAYLIST_KEY, enabled);
 }
 
 /** If the toggle is on, auto-add the completed item to the playlist. */
@@ -1286,7 +1288,7 @@ async function _notifySongCreated(songId: string): Promise<void> {
   try {
     const { song } = await readSong(songId);
     if (song) {
-      if (_claimSongDelivery(songId)) window.dispatchEvent(new CustomEvent('song-created', { detail: { song } }));
+      if (_claimSongDelivery(songId)) emit('song-created', { song });
       // This IS the row the restore sweep would have asked for.
       _hydratedSongIds.add(songId);
       const item = _state.items.find(i => i.songId === songId);

@@ -5,9 +5,9 @@ import { useTranslation } from 'react-i18next';
 import { ExternalLink, RefreshCw } from 'lucide-react';
 import { updatesApi, type UpdateChannel, type UpdatesStatus } from '../../services/updatesApi';
 import { updatesStatusOptions } from '../../queries/shell-queue/settings';
-import { ParamLabel } from '../shared/ParamLabel';
+import { ParamLabel } from '@/components/shared/controls/ParamLabel';
 import { SelectRow } from './SettingsPrimitives';
-import { ConfirmDialog } from '../shared/ConfirmDialog';
+import { ConfirmDialog } from '@/components/shared/overlays/ConfirmDialog';
 import { UpdateOutcome, UpdateRestartContext } from './UpdateReconnectOverlay';
 import { updateRefusal, updatesViewState } from '../../stores/updatesViewState';
 

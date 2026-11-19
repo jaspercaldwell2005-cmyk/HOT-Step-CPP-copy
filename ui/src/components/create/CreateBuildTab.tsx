@@ -12,11 +12,11 @@ import { useBackendStore } from '../../stores/backendStore';
 import { useGlobalParamsStore } from '../../stores/globalParamsStore';
 import { generateApi } from '../../services/api';
 import { yue2CoverApi, type Yue2SectionReview } from '../../services/yue2CoverApi';
-import { Yue2BuildPage, buildCaption, useYue2Build, type BuildSettings } from '../cover-studio/Yue2Build';
-import { COVER_AR_DEFAULT, clampCoverAr } from '../cover-studio/Yue2CoverPanel';
-import { barRanges } from '../../utils/abcSectionMove';
-import { notify } from '../shared/Toast';
-import { yue2PickAtEnqueue } from '../../utils/yue2CaptionSource';
+import { Yue2BuildPage, buildCaption, useYue2Build, type BuildSettings } from '@/components/cover-studio/build/Yue2Build';
+import { COVER_AR_DEFAULT, clampCoverAr } from '@/components/cover-studio/build/Yue2CoverPanel';
+import { barRanges } from '@/utils/abc/abcSectionMove';
+import { notify } from '@/components/shared/feedback/Toast';
+import { yue2PickAtEnqueue } from '@/utils/lyrics/yue2CaptionSource';
 
 const YUE2 = 'yue2';
 const SESSION_KEY = 'hs-create-buildSessionId';

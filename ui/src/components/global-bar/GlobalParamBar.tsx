@@ -30,9 +30,9 @@ import { DiscoPulseWrapper } from '../shared/DiscoPulseWrapper';
 import { MonitorBar } from './MonitorBar';
 import { useVstChainStore } from '../../stores/vstChainStore';
 import { ProfilesModal } from './ProfilesModal';
-import { QueryError } from '../shared/QueryError';
+import { QueryError } from '@/components/shared/feedback/QueryError';
 import { healthOptions } from '../../queries/shell-queue/settings';
-import { engineNotice, noModelsRefetchInterval } from '../shared/noModelsPoll';
+import { engineNotice, noModelsRefetchInterval } from '@/components/shared/status/noModelsPoll';
 import { usePlaylist } from '../../stores/playlistStore';
 
 type SectionId = 'models' | 'adapters' | 'generation' | 'lm' | 'postprocessing' | null;
