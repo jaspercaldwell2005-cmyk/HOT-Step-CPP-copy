@@ -29,8 +29,6 @@ function parseLyricSections(lyrics: string): string[] {
   return [lyrics.trim()].filter(isPresent);
 }
 
-const fmtT = (s: number) => formatClock(s);
-
 // ── Next-slot param definitions ───────────────────────────────────────────────
 const NEXT_SLOT_PARAMS = [
   { label: 'Guidance', min: 0.5, max: 15,  step: 0.1, key: 'guidance_scale',  fmt: (v: number) => v.toFixed(1),         emoji: '📐', color: 'text-blue-400'   },
@@ -539,7 +537,7 @@ export const StormLiveControls: React.FC<StormLiveControlsProps> = ({
                   : '🔴 REC'}
               </button>
             </div>
-            <span className="text-[10px] text-zinc-500 tabular-nums">{fmtT(sa.currentTime)} / {fmtT(sa.bufferedTime)}</span>
+            <span className="text-[10px] text-zinc-500 tabular-nums">{formatClock(sa.currentTime)} / {formatClock(sa.bufferedTime)}</span>
           </div>
           <div className="w-full h-1 rounded-full bg-zinc-800 overflow-hidden">
             <div className="h-full rounded-full bg-gradient-to-r from-red-600 to-pink-500 transition-all"

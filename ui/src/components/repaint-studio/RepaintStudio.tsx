@@ -28,7 +28,8 @@ import { useDisguiseMode } from '@/hooks/useDisguiseMode';
 import { useStudioDraftMirror } from '@/services/studioDraftMirror';
 import { StudioDraftPicker } from '@/components/shared/overlays/StudioDraftPicker';
 import { notify } from '@/components/shared/feedback/Toast';
-import { writeJson } from '@/utils/storage/storageJson';
+import { readJson, writeJson } from '@/utils/storage/storageJson';
+import { errorMessage } from '@/utils/format/errorMessage';
 import { newId } from '@/utils/id';
 
 // ── Persist helpers (same pattern as CoverStudio) ──
@@ -36,11 +37,7 @@ function persist(key: string, value: unknown) {
   try { writeJson(`hs-repaint-${key}`, value); } catch {}
 }
 function restore<T>(key: string, fallback: T): T {
-  try {
-    const raw = localStorage.getItem(`hs-repaint-${key}`);
-    if (raw !== null) return JSON.parse(raw);
-  } catch {}
-  return fallback;
+  return readJson(`hs-repaint-${key}`, fallback);
 }
 
 export const RepaintStudio: React.FC = () => {
@@ -150,7 +147,7 @@ export const RepaintStudio: React.FC = () => {
           masteredAudioUrl: audio.masteredAudioUrl, noAdapterAudioUrl: audio.noAdapterAudioUrl,
           audioDuration: audio.duration });
         showToast('Repaint complete!');
-      }).catch(err => { if (mounted) showToast(`Repaint ${String((err as Error).message)}`); })
+      }).catch(err => { if (mounted) showToast(`Repaint ${errorMessage(err)}`); })
       .finally(() => {
         if (mounted && localStorage.getItem('hs-repaint-workflowJob') === id) localStorage.removeItem('hs-repaint-workflowJob');
         if (mounted) { setIsGenerating(false); setActiveJobId(null); }
@@ -271,11 +268,11 @@ export const RepaintStudio: React.FC = () => {
         });
         showToast('Repaint complete!');
       }).catch(err => {
-        failManualQueueItem(qId, (err as Error).message);
-        showToast(`Failed: ${(err as Error).message}`);
+        failManualQueueItem(qId, errorMessage(err));
+        showToast(`Failed: ${errorMessage(err)}`);
       });
-    } catch (err: any) {
-      showToast(`Generation failed: ${err.message}`);
+    } catch (err) {
+      showToast(`Generation failed: ${errorMessage(err)}`);
     } finally {
       if (submissionKeyRef.current === key) {
         submissionKeyRef.current = null;

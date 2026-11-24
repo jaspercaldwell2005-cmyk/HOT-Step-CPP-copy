@@ -15,6 +15,7 @@ import { ParamLabel } from '@/components/shared/controls/ParamLabel';
 import { useTrainingStore } from '@/stores/trainingStore';
 import { FolderPicker } from '@/components/training-studio/panels/FolderPicker';
 import { VOCAL_LANGUAGES } from '@/constants/languages';
+import { baseName } from '@/utils/paths/baseName';
 
 /** Same shape as the server's slugify: lowercase, [a-z0-9-_], collapsed. */
 function slugify(name: string): string {
@@ -88,7 +89,7 @@ export const NewDatasetWizard: React.FC<NewDatasetWizardProps> = ({ open, onClos
 
   // Name defaults to the selected folder's own name; trigger word follows the
   // name. Each stops auto-following the moment the user edits it.
-  const folderName = sourceDir.replace(/[\\/]+$/, '').split(/[\\/]/).pop() ?? '';
+  const folderName = baseName(sourceDir.replace(/[\\/]+$/, ''));
   const effectiveName = nameTouched ? name : folderName;
   const effectiveTag = triggerTouched ? customTag : slugify(effectiveName);
   const canCreate = !!sourceDir && !!effectiveName.trim() && !creating && !!preview && preview.audioFiles > 0;

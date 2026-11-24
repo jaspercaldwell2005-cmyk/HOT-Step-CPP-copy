@@ -20,6 +20,7 @@ import { apiClient } from '@/services/httpClient';
 import React from 'react';
 import { X, Star, Trash2, Save, Shuffle, Loader2 } from 'lucide-react';
 import { HintButton } from '@/components/shared/controls/HintButton';
+import { IconButton } from '@/components/shared/controls/IconButton';
 import { formatDay } from '@/utils/format/dateUtils';
 import { plural } from '@/utils/format/plural';
 
@@ -220,17 +221,18 @@ export const SeedManagerDrawer: React.FC<SeedManagerDrawerProps> = ({
               }`}
             >
               {/* Favorite star */}
-              <button
+              <IconButton
+                label={s.favorite ? 'Remove from favorites' : 'Add to favorites'}
+                hint={s.favorite ? 'No longer keeps this seed at the top of the list.' : 'Keeps this seed at the top of the list.'}
                 onClick={() => handleFavorite(s.name)}
                 // A double-click would queue two toggles — the second undoes the first.
                 disabled={favoriteMut.isPending && favoriteMut.variables === s.name}
                 className={`flex-shrink-0 transition-colors ${
                   s.favorite ? 'text-amber-400 hover:text-amber-300' : 'text-zinc-700 hover:text-zinc-500'
                 }`}
-                title={s.favorite ? 'Remove from favorites' : 'Add to favorites'}
               >
                 <Star size={9} fill={s.favorite ? 'currentColor' : 'none'} />
-              </button>
+              </IconButton>
 
               {/* Load button — name + seed value */}
               <button
@@ -261,17 +263,18 @@ export const SeedManagerDrawer: React.FC<SeedManagerDrawerProps> = ({
               </button>
 
               {/* Delete */}
-              <button
+              <IconButton
+                label={deleteConfirm === s.name ? 'Confirm delete' : 'Delete seed'}
+                hint={deleteConfirm === s.name ? 'Deletes this saved seed.' : 'Click once to arm the delete, then again to remove the seed.'}
                 onClick={() => handleDelete(s.name)}
                 className={`flex-shrink-0 transition-all rounded px-1 py-0.5 ${
                   deleteConfirm === s.name
                     ? 'text-red-300 bg-red-900/40 text-[8px] font-medium'
                     : 'text-zinc-700 hover:text-red-400 opacity-0 group-hover:opacity-100'
                 }`}
-                title={deleteConfirm === s.name ? 'Click again to confirm delete' : 'Delete seed'}
               >
                 {deleteConfirm === s.name ? '✕ sure?' : <Trash2 size={9} />}
-              </button>
+              </IconButton>
             </div>
           ))}
         </div>

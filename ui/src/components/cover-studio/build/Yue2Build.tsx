@@ -17,6 +17,7 @@ import { EditableSlider } from '@/components/shared/controls/EditableSlider';
 import { formatClock } from '@/utils/format/format';
 import { errorMessage } from '@/utils/format/errorMessage';
 import { plural } from '@/utils/format/plural';
+import { clamp01 } from '@/utils/format/clamp';
 
 const FPS = 25;
 // A take plays from this long before its first section, so the join is heard.
@@ -330,7 +331,7 @@ function TakeWave({ peaks, from, to, playhead, crop, canIn, colour, onSeek }: {
   const x = (t: number) => Math.min(100, Math.max(0, ((t - from) / span) * 100));
   const at = (clientX: number, box: Element) => {
     const r = box.getBoundingClientRect();
-    return from + Math.min(1, Math.max(0, (clientX - r.left) / Math.max(1, r.width))) * span;
+    return from + clamp01((clientX - r.left) / Math.max(1, r.width)) * span;
   };
   const shown = crop ? [crop.in ?? from, crop.out ?? to] as [number, number] : null;
   const inX = shown ? x(shown[0]) : 0, outX = shown ? x(shown[1]) : 100;
@@ -572,7 +573,7 @@ export const Yue2BuildPage: React.FC<PageProps> = p => {
     audio.src = url;
     audio.currentTime = Math.max(0, at - offset);
     setPlaying({ key, from, to, offset });
-    setProgress(Math.min(1, Math.max(0, (at - from) / Math.max(0.1, to - from))));
+    setProgress(clamp01((at - from) / Math.max(0.1, to - from)));
     audio.play().catch(() => { if (generation.current === mine) stop(); });
   };
   /** Play, pause and resume for `key`; a different `key` starts it from the top. */
@@ -589,7 +590,7 @@ export const Yue2BuildPage: React.FC<PageProps> = p => {
     const audio = audioRef.current;
     if (!audio || playing?.key !== key || playing.from !== from || playing.to !== to) return start(key, url, from, to, at, offset);
     audio.currentTime = at - offset;
-    setProgress(Math.min(1, Math.max(0, (at - from) / Math.max(0.1, to - from))));
+    setProgress(clamp01((at - from) / Math.max(0.1, to - from)));
   };
   // Playback ends with the build it belongs to: a session change or leaving the page.
   // React clears the ref before this cleanup runs on unmount, so hold the element.
@@ -684,7 +685,7 @@ export const Yue2BuildPage: React.FC<PageProps> = p => {
           if (!playing) return;
           const t = e.currentTarget.currentTime + playing.offset;
           if (t >= playing.to) { stop(); return; }
-          setProgress(Math.min(1, Math.max(0, (t - playing.from) / Math.max(0.1, playing.to - playing.from))));
+          setProgress(clamp01((t - playing.from) / Math.max(0.1, playing.to - playing.from)));
         }} />
       {/* Top bar: what is being built and how. */}
       <div className="flex flex-wrap items-center gap-3 border-b border-zinc-200 dark:border-white/10 px-4 py-2">

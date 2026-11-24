@@ -25,6 +25,7 @@ import { submitStudioRender, followStudioRender, type SourceRef } from '@/servic
 import { useUpload } from '@/queries/writes';
 import { studioWorkflowApi as workflowApi } from '@/queries/studios/workflows';
 import { useBackendStore } from '@/stores/backendStore';
+import { errorMessage } from '@/utils/format/errorMessage';
 import { TrackPicker, type TrackName } from './TrackPicker';
 import { LayerStack, type LayerInfo } from './LayerStack';
 import { RecentBuilds } from './RecentBuilds';
@@ -145,7 +146,7 @@ export const StemBuilder: React.FC = () => {
           setPreviewLabel((captured.trackName || 'stem').replace('_', ' '));
         }
         showToast('Layer complete!');
-      }).catch(err => { if (mounted) showToast(`Layer ${String((err as Error).message)}`); })
+      }).catch(err => { if (mounted) showToast(`Layer ${errorMessage(err)}`); })
       .finally(() => {
         if (mounted && localStorage.getItem('hs-sb-workflowJob') === id) localStorage.removeItem('hs-sb-workflowJob');
         if (mounted) { setIsGenerating(false); setActiveJobId(null); }
@@ -267,8 +268,8 @@ export const StemBuilder: React.FC = () => {
       }
       showToast(`${selectedTrack} layer complete!`);
       setTimeout(() => setGenStage(''), 3000);
-    } catch (err: any) {
-      showToast(`Generation failed: ${err.message}`);
+    } catch (err) {
+      showToast(`Generation failed: ${errorMessage(err)}`);
       setGenStage('');
     } finally {
       if (submissionKeyRef.current === key) {

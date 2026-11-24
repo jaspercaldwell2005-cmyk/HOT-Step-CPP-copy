@@ -19,6 +19,7 @@ import type { Yue2AssignmentSuggestions } from '@/services/yue2CoverApi';
 import type { PrepareSuggestions } from '@/components/cover-studio/build/useYue2Prepare';
 import { StyledSelect } from '@/components/shared/controls/StyledSelect';
 import { Toggle } from '@/components/shared/controls/Toggle';
+import { errorMessage } from '@/utils/format/errorMessage';
 import { clock, barTimes, sectionSpans, spanBars, spanName, spanSeconds, type Prepare, type ScoreRange, type SectionSpan } from '@/components/cover-studio/build/prepareView';
 
 const btn = 'rounded-md border border-zinc-300 dark:border-white/10 px-2 py-1 text-xs text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-white/5 disabled:opacity-40';
@@ -114,7 +115,7 @@ export const PrepareLyrics: React.FC<Props> = ({ prep, lyrics, onLyricsText, sug
         setMessage(t('cover.prepare.lyrics.staleReply')); return;
       }
       setProposal({ guard, reply, off: reply.uncertain.map(id => `row:${id}`) });
-    } catch (e) { setMessage((e as Error).message); }
+    } catch (e) { setMessage(errorMessage(e)); }
     finally { setAsking(false); }
   };
   const stale = !!proposal && !prep.matchesGuard(proposal.guard);

@@ -13,6 +13,8 @@ import { YUE2_BACKEND_ID } from '@/utils/lyrics/yue2CaptionSource';
 import { QueryError } from '@/components/shared/feedback/QueryError';
 import { formatDecimal } from '@/utils/format/format';
 import { isPresent } from '@/utils/guards';
+import { baseName } from '@/utils/paths/baseName';
+import { tailPath } from '@/utils/paths/tailPath';
 
 interface PresetForm {
   adapter_path: string;
@@ -212,9 +214,9 @@ export const PresetSettingsModal: React.FC<PresetSettingsModalProps> = ({
   // Last two path segments — for a per-run folder that reads "artist/stamp",
   // which is the part a human recognises.
   const adapterFileName = form.adapter_path
-    ? form.adapter_path.split(/[\\/]/).filter(isPresent).slice(-2).join('/')
+    ? tailPath(form.adapter_path, 2)
     : '';
-  const matchFileName = form.reference_track_path ? form.reference_track_path.split(/[\\/]/).pop() || '' : '';
+  const matchFileName = form.reference_track_path ? baseName(form.reference_track_path) : '';
 
   return (
     <>
@@ -294,7 +296,7 @@ export const PresetSettingsModal: React.FC<PresetSettingsModalProps> = ({
                   });
                   const label = (p2: string) => {
                     const m = meta[p2];
-                    const bits = [m?.trigger || m?.runName || p2.split(/[\\/]/).pop()];
+                    const bits = [m?.trigger || m?.runName || baseName(p2)];
                     if (m?.steps) bits.push(`${m.steps} steps`);
                     return bits.filter(isPresent).join(' · ');
                   };

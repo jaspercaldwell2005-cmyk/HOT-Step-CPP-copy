@@ -1,4 +1,5 @@
 import { apiClient, type ReadOptions } from './httpClient';
+import { errorMessage } from '@/utils/format/errorMessage';
 // assistantApi.ts — Frontend API client for the AI Assistant
 //
 // Provides streaming chat via SSE (fetch + ReadableStream) and
@@ -96,9 +97,9 @@ export function chatStream(
           }
         }
       }
-    } catch (err: any) {
-      if (err.name !== 'AbortError') {
-        onError(err.message || 'Connection failed');
+    } catch (err) {
+      if (!(err instanceof Error) || err.name !== 'AbortError') {
+        onError(errorMessage(err) || 'Connection failed');
       }
     }
   })();

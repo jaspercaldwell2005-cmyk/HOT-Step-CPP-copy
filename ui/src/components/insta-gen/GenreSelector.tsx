@@ -101,7 +101,6 @@ export const GenreSelector: React.FC<GenreSelectorProps> = ({ selected, onChange
               <button
                 onClick={(e) => { e.stopPropagation(); clearAll(); }}
                 className="text-xs text-zinc-400 hover:text-red-400 transition-colors"
-                title={t('instaGen.clearAll')}
               >
                 {t('instaGen.clearAll')}
               </button>

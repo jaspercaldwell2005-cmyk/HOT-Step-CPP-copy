@@ -10,7 +10,7 @@ import { useTranslation } from 'react-i18next';
 import { usePersistedState } from '@/hooks/usePersistedState';
 import { resourceKey } from '@/queries/keys';
 import { runQueries, trainingWritePlan } from '@/queries/training-runs/queries';
-import { formatBytes } from '@/services/stemStudioApi';
+import { formatBytes } from '@/utils/format/format';
 import {
   deleteMm3Run,
   deleteYue2AitkRun,

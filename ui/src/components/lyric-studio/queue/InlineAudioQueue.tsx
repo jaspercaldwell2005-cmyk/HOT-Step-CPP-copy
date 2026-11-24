@@ -9,7 +9,9 @@
 import React, { memo, useCallback, useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Loader2, CheckCircle2, XCircle, X, Music, Play, Square, ListPlus, Check, Download, RotateCcw } from 'lucide-react';
-import { SongActionsMenu, songFromQueueItem } from '@/components/shared/songs/SongActionsMenu';
+import { SongActionsMenu } from '@/components/shared/songs/SongActionsMenu';
+import { IconButton } from '@/components/shared/controls/IconButton';
+import { songFromQueueItem } from '@/components/shared/songs/songActions/songShapes';
 import {
   useAudioGenQueue,
   removeFromAudioQueue,
@@ -192,8 +194,6 @@ export const InlineAudioQueue: React.FC = () => {
   );
 };
 
-const fmtClock = (sec: number) => formatClock(sec);
-
 /** Audio seconds per second of generation, the number that says how fast
  *  a render really was. Absent until both sides are known. */
 function fmtRatio(audioSec: number, elapsedSec: number): string {
@@ -251,8 +251,8 @@ const BatchBox: React.FC<Omit<RowsProps, 'rows'> & { items: AudioQueueItem[] }> 
           Batch of {items.length}{planned ? ' · planned together' : running ? ' · rendering together' : ''}
         </span>
         <span className="flex items-center gap-1.5 text-[10px] font-mono">
-          {elapsed > 0 && <span className="text-zinc-500" title="Time the whole batch took">⏱{fmtClock(elapsed)}</span>}
-          {total > 0 && <span className="text-zinc-600" title="Audio produced by the batch">🎵{fmtClock(total)}</span>}
+          {elapsed > 0 && <span className="text-zinc-500" title="Time the whole batch took">⏱{formatClock(elapsed)}</span>}
+          {total > 0 && <span className="text-zinc-600" title="Audio produced by the batch">🎵{formatClock(total)}</span>}
           {ratio && <span className="text-emerald-400/80" title="Audio seconds per second of generation">{ratio}</span>}
         </span>
       </div>
@@ -306,11 +306,15 @@ const QueueItemRow: React.FC<QueueItemRowProps> = ({ item, isPlayingInMain, onPl
           {isPending && <div className="w-2 h-2 rounded-full bg-zinc-500" />}
           {isRunning && <Loader2 className="w-3.5 h-3.5 text-pink-400 animate-spin" />}
           {isSucceeded && item.audioUrl ? (
-            <button onClick={() => onPlay(item)}
-              className={`p-0.5 rounded-full transition-colors ${isPlayingInMain ? 'bg-green-500/20 text-green-300' : 'text-green-400 hover:bg-green-500/20'}`}
-              title={isPlayingInMain ? 'Playing' : 'Play'}>
+            <IconButton
+              label={isPlayingInMain ? 'Playing' : 'Play'}
+              hint={isPlayingInMain
+                ? 'This is the take the main player is on. Click to stop it.'
+                : 'Plays this finished take in the main player.'}
+              onClick={() => onPlay(item)}
+              className={`p-0.5 rounded-full transition-colors ${isPlayingInMain ? 'bg-green-500/20 text-green-300' : 'text-green-400 hover:bg-green-500/20'}`}>
               {isPlayingInMain ? <Square className="w-3 h-3" /> : <Play className="w-3 h-3" />}
-            </button>
+            </IconButton>
           ) : isSucceeded ? (
             <CheckCircle2 className="w-3.5 h-3.5 text-green-400" />
           ) : null}
@@ -341,18 +345,22 @@ const QueueItemRow: React.FC<QueueItemRowProps> = ({ item, isPlayingInMain, onPl
             </span>
           )}
           {isPending && (
-            <button onClick={() => removeFromAudioQueue(item.id)}
-              className="p-0.5 rounded hover:bg-red-500/20 text-zinc-500 hover:text-red-400 transition-colors"
-              title="Remove from queue">
+            <IconButton
+              label="Remove from queue"
+              hint="Drops this render before it starts. It will not be generated."
+              onClick={() => removeFromAudioQueue(item.id)}
+              className="p-0.5 rounded hover:bg-red-500/20 text-zinc-500 hover:text-red-400 transition-colors">
               <X className="w-3 h-3" />
-            </button>
+            </IconButton>
           )}
           {isRunning && (
-            <button onClick={() => forceFailQueueItem(item.id)}
-              className="p-0.5 rounded hover:bg-red-500/20 text-zinc-500 hover:text-red-400 transition-colors"
-              title="Dismiss stuck item">
+            <IconButton
+              label="Dismiss stuck item"
+              hint="Stops waiting on this render and marks it failed. Use it when the engine has stopped reporting progress."
+              onClick={() => forceFailQueueItem(item.id)}
+              className="p-0.5 rounded hover:bg-red-500/20 text-zinc-500 hover:text-red-400 transition-colors">
               <X className="w-3 h-3" />
-            </button>
+            </IconButton>
           )}
           {isSucceeded && item.audioUrl && (
             <>
@@ -369,11 +377,13 @@ const QueueItemRow: React.FC<QueueItemRowProps> = ({ item, isPlayingInMain, onPl
                   onDownload={() => onDownload?.(item)}
                 />
               ) : (
-                <button onClick={() => onDownload?.(item)}
-                  className="p-0.5 rounded hover:bg-emerald-500/20 text-zinc-500 hover:text-emerald-400 transition-colors"
-                  title="Download Audio">
+                <IconButton
+                  label="Download Audio"
+                  hint="Downloads this take as audio, in the format set on the Settings page."
+                  onClick={() => onDownload?.(item)}
+                  className="p-0.5 rounded hover:bg-emerald-500/20 text-zinc-500 hover:text-emerald-400 transition-colors">
                   <Download className="w-3 h-3" />
-                </button>
+                </IconButton>
               )}
             </>
           )}
@@ -435,10 +445,14 @@ const QueueAddToPlaylistBtn = memo<{ item: AudioQueueItem }>(({ item }) => {
   };
 
   return (
-    <button onClick={toggle}
-      className={`p-0.5 rounded transition-colors ${inPlaylist ? 'text-pink-400 bg-pink-500/10' : 'text-zinc-600 hover:text-pink-400 hover:bg-pink-500/10'}`}
-      title={inPlaylist ? 'Remove from playlist' : 'Add to playlist'}>
+    <IconButton
+      label={inPlaylist ? 'Remove from playlist' : 'Add to playlist'}
+      hint={inPlaylist
+        ? 'Takes this take out of the playlist. The render stays in the queue.'
+        : 'Adds this finished take to the playlist, in the order it was rendered.'}
+      onClick={toggle}
+      className={`p-0.5 rounded transition-colors ${inPlaylist ? 'text-pink-400 bg-pink-500/10' : 'text-zinc-600 hover:text-pink-400 hover:bg-pink-500/10'}`}>
       {inPlaylist ? <Check className="w-3 h-3" /> : <ListPlus className="w-3 h-3" />}
-    </button>
+    </IconButton>
   );
 });

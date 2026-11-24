@@ -13,8 +13,6 @@ import { useVstChainStore } from '@/stores/vstChainStore';
 import { usePlaybackSelector } from '@/stores/playbackStore';
 import { formatClock } from '@/utils/format/format';
 
-const formatTime = (s: number) => formatClock(s);
-
 export const MonitorBar: React.FC = () => {
   const { t } = useTranslation();
   const {
@@ -69,8 +67,8 @@ export const MonitorBar: React.FC = () => {
 
       {/* Time */}
       <span className="text-[10px] text-violet-300/60 font-mono flex-shrink-0 tabular-nums">
-        {formatTime(monitorPosition)}
-        {monitorDuration > 0 && <span className="text-violet-500/40">/{formatTime(monitorDuration)}</span>}
+        {formatClock(monitorPosition)}
+        {monitorDuration > 0 && <span className="text-violet-500/40">/{formatClock(monitorDuration)}</span>}
       </span>
 
       {/* Pause / Resume */}

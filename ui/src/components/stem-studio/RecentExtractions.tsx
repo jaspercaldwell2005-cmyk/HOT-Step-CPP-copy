@@ -107,7 +107,7 @@ export const RecentExtractions: React.FC<RecentExtractionsProps> = ({ onSelectJo
                 onClick={(e) => handleDelete(e, job.id)}
                 disabled={deleteMut.isPending}
                 style={{ ...styles.deleteBtn, opacity: deleteMut.isPending ? 0.45 : 1 }}
-                title={t('stem.deleteExtraction')}
+                aria-label={t('stem.deleteExtraction')}
               >
                 <Trash2 size={12} />
               </button>

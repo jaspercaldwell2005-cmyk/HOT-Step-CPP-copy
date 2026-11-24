@@ -107,7 +107,6 @@ export const ModelsDropdown: React.FC = () => {
                 type="button"
                 onClick={() => toggleFormat(f)}
                 aria-pressed={active}
-                title={active ? `Hide ${FORMAT_LABELS[f]} models` : `Show ${FORMAT_LABELS[f]} models`}
                 className={`px-2 py-0.5 rounded-md text-[10px] font-semibold uppercase tracking-wide border transition-colors
                   ${active
                     ? 'bg-pink-500/15 text-pink-400 border-pink-500/30'

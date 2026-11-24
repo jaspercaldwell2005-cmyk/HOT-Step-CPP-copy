@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { DownloadProgressBar } from './DownloadProgressBar';
 import type { RegistryFile, DownloadJob } from '@/types';
 import { formatBytes } from '@/utils/format/format';
+import { IconButton } from '@/components/shared/controls/IconButton';
 
 interface Props {
   file: RegistryFile;
@@ -80,16 +81,18 @@ export const ModelRow: React.FC<Props> = ({ file, downloadJob, onDownload, onCan
                     <CheckCircle size={12} />
                     <span className="text-[10px]">{t('models.installed')}</span>
                   </span>
-                  <button onClick={() => setConfirmDelete(true)} title={t('models.deleteModel')}
+                  <IconButton label={t('models.deleteModel')}
+                    hint={t('models.deleteModelHint', 'Removes this file from disk. It can be downloaded again from the catalogue.')}
+                    onClick={() => setConfirmDelete(true)}
                     className="p-1 rounded-lg text-zinc-600 hover:text-red-400 hover:bg-white/5 transition-colors opacity-0 group-hover:opacity-100">
                     <Trash2 size={12} />
-                  </button>
+                  </IconButton>
                 </>
               )}
             </>
           )}
           {file.outdated && !isDownloading && (
-            <button onClick={() => onDownload(file.id)} title={t('models.updateAvailable')}
+            <button onClick={() => onDownload(file.id)}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-amber-500 to-amber-600 text-white text-xs font-medium hover:from-amber-400 hover:to-amber-500 transition-all shadow-lg shadow-amber-500/10">
               <Download size={12} />
               {t('models.update')}

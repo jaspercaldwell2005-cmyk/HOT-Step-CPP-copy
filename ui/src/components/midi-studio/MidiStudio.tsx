@@ -17,6 +17,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/context/AuthContext';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { midiJobsOptions, midiStatusOptions, removeMidiJob } from '@/queries/studios/midi';
+import { IconButton } from '@/components/shared/controls/IconButton';
 import { queryManager } from '@/queries/invalidation';
 import { useStudioSongs } from '@/queries/studios/shared';
 import type { Song } from '@/types';
@@ -549,13 +550,14 @@ export const MidiStudio: React.FC = () => {
                     <div className="flex items-center gap-1 flex-shrink-0">
                       {hasMidi && (
                         <>
-                          <button
+                          <IconButton
+                            label={t('midiStudio.preview')}
+                            hint={expandedJob === job.id ? t('midiStudio.previewHideHint', 'Closes the piano roll and export options.') : t('midiStudio.previewShowHint', 'Opens the piano roll and export options for this transcription.')}
                             onClick={() => setExpandedJob(e => e === job.id ? null : job.id)}
                             className="p-1.5 rounded-md text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-zinc-200 dark:hover:bg-white/10 transition-colors"
-                            title={t('midiStudio.preview')}
                           >
                             {expandedJob === job.id ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
-                          </button>
+                          </IconButton>
                           <a
                             href={getMidiFileUrl(job.id)}
                             className="p-1.5 rounded-md text-zinc-500 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-zinc-200 dark:hover:bg-white/10 transition-colors"
@@ -566,13 +568,14 @@ export const MidiStudio: React.FC = () => {
                           </a>
                         </>
                       )}
-                      <button
+                      <IconButton
+                        label={running ? t('midiStudio.cancel') : t('midiStudio.delete')}
+                        hint={running ? t('midiStudio.cancelHint', 'Stops this transcription. The partial MIDI is discarded.') : t('midiStudio.deleteHint', 'Removes this transcription and its MIDI file.')}
                         onClick={() => handleDelete(job.id)}
                         className="p-1.5 rounded-md text-zinc-500 hover:text-red-500 hover:bg-zinc-200 dark:hover:bg-white/10 transition-colors"
-                        title={running ? t('midiStudio.cancel') : t('midiStudio.delete')}
                       >
                         {running ? <X size={15} /> : <Trash2 size={15} />}
-                      </button>
+                      </IconButton>
                     </div>
                   </div>
                   {job.status === 'transcribing' && (

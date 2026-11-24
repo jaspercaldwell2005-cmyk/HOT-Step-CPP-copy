@@ -5,6 +5,7 @@ import { X, Play } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { DownloadJob } from '@/types';
 import { formatBytes, formatBytesPerSecond } from '@/utils/format/format';
+import { IconButton } from '@/components/shared/controls/IconButton';
 
 interface Props {
   job: DownloadJob;
@@ -50,16 +51,20 @@ export const DownloadProgressBar: React.FC<Props> = ({ job, onCancel, onResume, 
         </span>
         <div className="flex items-center gap-1 flex-shrink-0">
           {canResume && (
-            <button onClick={() => onResume(job.jobId)} title={t('models.resume')}
+            <IconButton label={t('models.resume')}
+              hint={t('models.resumeHint', 'Continues this download from where it stopped.')}
+              onClick={() => onResume(job.jobId)}
               className="p-1 rounded-lg hover:bg-white/10 text-amber-400 hover:text-amber-300 transition-colors">
               <Play size={12} />
-            </button>
+            </IconButton>
           )}
           {isActive && (
-            <button onClick={() => onCancel(job.jobId)} title={t('common.cancel')}
+            <IconButton label={t('common.cancel')}
+              hint={t('models.cancelDownloadHint', 'Stops this download. Its partial file stays until it is started again.')}
+              onClick={() => onCancel(job.jobId)}
               className="p-1 rounded-lg hover:bg-white/10 text-zinc-500 hover:text-red-400 transition-colors">
               <X size={12} />
-            </button>
+            </IconButton>
           )}
         </div>
       </div>

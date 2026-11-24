@@ -28,6 +28,7 @@ import { TrackSelector } from './TrackSelector';
 import { RecentExtractions } from './RecentExtractions';
 import { Section } from '@/components/shared/ActivitySidebar';
 import { StyledSelect } from '@/components/shared/controls/StyledSelect';
+import { errorMessage } from '@/utils/format/errorMessage';
 import { ParamLabel } from '@/components/shared/controls/ParamLabel';
 import { InlineAudioQueue } from '@/components/lyric-studio/queue/InlineAudioQueue';
 import { usePersistedState } from '@/hooks/usePersistedState';
@@ -152,7 +153,7 @@ export const StemStudio: React.FC = () => {
       loadResultIntoMixer(jobId, result);
       void queryManager.invalidate(client, extractionsOptions().queryKey);
 
-    } catch (err: any) {
+    } catch (err) {
       console.error('SuperSep failed:', err);
       setExtractProgress({
         status: 'failed',
@@ -160,7 +161,7 @@ export const StemStudio: React.FC = () => {
         currentTrack: '',
         completedStems: [],
         totalTracks: 0,
-        error: err.message,
+        error: errorMessage(err),
       });
     } finally {
       setIsExtracting(false);
@@ -207,7 +208,7 @@ export const StemStudio: React.FC = () => {
       loadResultIntoMixer(jobId, result);
       void queryManager.invalidate(client, extractionsOptions().queryKey);
 
-    } catch (err: any) {
+    } catch (err) {
       console.error('Extraction failed:', err);
       setExtractProgress({
         status: 'failed',
@@ -215,7 +216,7 @@ export const StemStudio: React.FC = () => {
         currentTrack: '',
         completedStems: [],
         totalTracks: selectedTracks.length,
-        error: err.message,
+        error: errorMessage(err),
       });
     } finally {
       setIsExtracting(false);

@@ -4,6 +4,7 @@ import { Music, Plus, RefreshCw, Trash2, MoreVertical, Link2, Search, PenLine, C
 import type { Artist } from '@/services/lireekApi';
 import { useDisguiseMode } from '@/hooks/useDisguiseMode';
 import { useClickOutside } from '@/hooks/useClickOutside';
+import { EmptyState } from '@/components/shared/layout/EmptyState';
 import { plural } from '@/utils/format/plural';
 
 interface ArtistGridProps {
@@ -86,31 +87,31 @@ export const ArtistGrid: React.FC<ArtistGridProps> = ({
       </div>
 
       {artists.length === 0 ? (
-        <div className="flex max-w-full min-w-0 flex-col items-center justify-center py-24 text-center">
-          <div className="w-20 h-20 rounded-full bg-white/5 flex items-center justify-center mb-4">
-            <Music className="w-10 h-10 text-zinc-600" />
-          </div>
-          <h2 className="text-lg font-semibold text-zinc-600 dark:text-zinc-400 mb-2 max-w-full">No artists yet</h2>
-          <p className="text-sm text-zinc-500 w-full max-w-sm mb-6">
-            Start by fetching lyrics from Genius or adding an artist manually.
-          </p>
-          <div className="flex max-w-full min-w-0 flex-wrap items-center justify-center gap-3">
-            <button
-              onClick={onAddNew}
-              className="flex max-w-full min-w-0 items-center gap-2 px-5 py-3 rounded-xl bg-pink-600 hover:bg-pink-500 text-white text-sm font-semibold transition-all"
-            >
-              <Search className="w-4 h-4 flex-shrink-0" />
-              <span className="truncate">Fetch from Genius</span>
-            </button>
-            <button
-              onClick={onAddManual}
-              className="flex max-w-full min-w-0 items-center gap-2 px-5 py-3 rounded-xl bg-white/5 hover:bg-white/10 border border-zinc-300 dark:border-white/10 text-zinc-700 dark:text-zinc-300 hover:text-white text-sm font-semibold transition-all"
-            >
-              <PenLine className="w-4 h-4 flex-shrink-0" />
-              <span className="truncate">Add Manually</span>
-            </button>
-          </div>
-        </div>
+        <EmptyState
+          icon={Music}
+          title="No artists yet"
+          hint="Start by fetching lyrics from Genius or adding an artist manually."
+          size="xl"
+          className="max-w-full min-w-0"
+          action={
+            <div className="flex max-w-full min-w-0 flex-wrap items-center justify-center gap-3">
+              <button
+                onClick={onAddNew}
+                className="flex max-w-full min-w-0 items-center gap-2 px-5 py-3 rounded-xl bg-pink-600 hover:bg-pink-500 text-white text-sm font-semibold transition-all"
+              >
+                <Search className="w-4 h-4 flex-shrink-0" />
+                <span className="truncate">Fetch from Genius</span>
+              </button>
+              <button
+                onClick={onAddManual}
+                className="flex max-w-full min-w-0 items-center gap-2 px-5 py-3 rounded-xl bg-white/5 hover:bg-white/10 border border-zinc-300 dark:border-white/10 text-zinc-700 dark:text-zinc-300 hover:text-white text-sm font-semibold transition-all"
+              >
+                <PenLine className="w-4 h-4 flex-shrink-0" />
+                <span className="truncate">Add Manually</span>
+              </button>
+            </div>
+          }
+        />
       ) : (
         <div ref={gridRef} className="grid grid-cols-[repeat(auto-fill,minmax(min(180px,calc(50%_-_8px)),1fr))] gap-4">
           {artists.map((artist, idx) => (

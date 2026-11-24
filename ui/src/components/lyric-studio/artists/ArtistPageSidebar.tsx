@@ -11,17 +11,12 @@ import { useDisguiseMode } from '@/hooks/useDisguiseMode';
 import { Toggle } from '@/components/shared/controls/Toggle';
 import { ParamLabel } from '@/components/shared/controls/ParamLabel';
 import { useCapabilities } from '@/hooks/useCapabilities';
-import { writeJson } from '@/utils/storage/storageJson';
+import { readJson, writeJson } from '@/utils/storage/storageJson';
 import { plural } from '@/utils/format/plural';
 
 // ── Persisted state hook ────────────────────────────────────────────────────
 function useLocalPersistedState<T>(key: string, defaultValue: T): [T, React.Dispatch<React.SetStateAction<T>>] {
-  const [state, setState] = useState<T>(() => {
-    try {
-      const raw = localStorage.getItem(key);
-      return raw !== null ? JSON.parse(raw) : defaultValue;
-    } catch { return defaultValue; }
-  });
+  const [state, setState] = useState<T>(() => readJson(key, defaultValue));
 
   useEffect(() => {
     writeJson(key, state);

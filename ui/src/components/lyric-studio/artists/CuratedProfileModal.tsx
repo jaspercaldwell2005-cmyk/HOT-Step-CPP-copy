@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { X, Loader2, Sparkles, ChevronDown, ChevronRight, Check, Disc3, FileText, CheckSquare, Square } from 'lucide-react';
 import type { LyricsSet, SongLyric, Profile } from '@/services/lireekApi';
 import { loadSelections } from '@/components/lyric-studio/write/ProviderSelector';
+import { errorMessage } from '@/utils/format/errorMessage';
 
 function parseSongs(songs: SongLyric[] | string): SongLyric[] {
   if (typeof songs === 'string') {
@@ -148,9 +149,9 @@ export const CuratedProfileModal: React.FC<CuratedProfileModalProps> = ({
         onComplete(data.lyrics_set, data.profile);
         onClose();
       }
-    } catch (err: any) {
+    } catch (err) {
       setBuilding(false);
-      showToast(`Build failed: ${err.message}`);
+      showToast(`Build failed: ${errorMessage(err)}`);
     }
   }, [totalSelected, selections, artistId, showToast, onComplete, onClose]);
 

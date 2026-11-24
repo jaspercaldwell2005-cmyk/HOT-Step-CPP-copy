@@ -54,7 +54,7 @@ export const ModelManagerModal: React.FC<Props> = ({ onClose }) => {
   const handleDownload = useCallback(async (fileId: string) => {
     try {
       await modelManagerApi.download(fileId, getStoredHfToken());
-    } catch (err: any) {
+    } catch (err) {
       console.error('[ModelManager] Download failed:', err);
     }
   }, []);
@@ -63,7 +63,7 @@ export const ModelManagerModal: React.FC<Props> = ({ onClose }) => {
     for (const id of fileIds) {
       try {
         await modelManagerApi.download(id, getStoredHfToken());
-      } catch (err: any) {
+      } catch (err) {
         console.error('[ModelManager] Pack download failed:', err);
       }
     }
@@ -72,7 +72,7 @@ export const ModelManagerModal: React.FC<Props> = ({ onClose }) => {
   const handleCancel = useCallback(async (jobId: string) => {
     try {
       await modelManagerApi.cancel(jobId);
-    } catch (err: any) {
+    } catch (err) {
       console.error('[ModelManager] Cancel failed:', err);
     }
   }, []);
@@ -80,7 +80,7 @@ export const ModelManagerModal: React.FC<Props> = ({ onClose }) => {
   const handleResume = useCallback(async (jobId: string) => {
     try {
       await modelManagerApi.resume(jobId);
-    } catch (err: any) {
+    } catch (err) {
       console.error('[ModelManager] Resume failed:', err);
     }
   }, []);

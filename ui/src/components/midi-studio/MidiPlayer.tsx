@@ -295,7 +295,6 @@ export const MidiPlayer: React.FC<Props> = ({ jobId, sourceAudioUrl, live }) => 
     return () => cancelAnimationFrame(rafRef.current);
   }, [isPlaying, draw]);
 
-  const fmt = (s: number) => formatClock(s);
 
   return (
     <div className="mt-3">
@@ -315,7 +314,7 @@ export const MidiPlayer: React.FC<Props> = ({ jobId, sourceAudioUrl, live }) => 
           {isPlaying ? <Pause size={16} /> : <Play size={16} className="ml-0.5" />}
         </button>
         <span className="text-[11px] tabular-nums text-zinc-500 dark:text-zinc-400 w-[86px]">
-          {fmt(curTime)} / {fmt(duration)}
+          {formatClock(curTime)} / {formatClock(duration)}
         </span>
 
         {/* crossfade: original <-> MIDI */}

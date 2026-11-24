@@ -19,6 +19,7 @@ import {
 } from '@/audio/engine';
 import { endEditGainAt, type EndEdit } from '../../../../server/src/contracts/fade';
 import { formatClock } from '@/utils/format/format';
+import { clamp01 } from '@/utils/format/clamp';
 
 interface WaveformProps {
   height?: number;
@@ -203,13 +204,12 @@ export const Waveform: React.FC<WaveformProps> = ({
   // Playhead at frame rate, off the React path entirely.
   useEffect(() => subscribeFrame((t) => paint(t)), [paint]);
 
-  const fmt = (s: number) => formatClock(s);
 
   const timeAt = (clientX: number): number | null => {
     const wrap = wrapRef.current;
     if (!wrap || !duration) return null;
     const rect = wrap.getBoundingClientRect();
-    return Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)) * duration;
+    return clamp01((clientX - rect.left) / rect.width) * duration;
   };
 
   return (
@@ -254,7 +254,7 @@ export const Waveform: React.FC<WaveformProps> = ({
           className="absolute top-0 px-1 py-0.5 text-[10px] font-mono rounded bg-zinc-900 text-zinc-200 pointer-events-none"
           style={{ left: Math.min(hoverX + 4, (wrapRef.current?.clientWidth ?? 0) - 40) }}
         >
-          {fmt((hoverX / Math.max(1, wrapRef.current?.clientWidth ?? 1)) * duration)}
+          {formatClock((hoverX / Math.max(1, wrapRef.current?.clientWidth ?? 1)) * duration)}
         </div>
       )}
     </div>

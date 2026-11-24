@@ -18,7 +18,7 @@
 // itself data-portal-layer so a click inside it does not read as a click
 // outside to BarSection's dismiss handler (#129/#126).
 
-import React, { useEffect, useRef, useState, useLayoutEffect, useSyncExternalStore } from 'react';
+import React, { useEffect, useRef, useState, useLayoutEffect } from 'react';
 import ReactDOM from 'react-dom';
 import {
   MoreHorizontal, RotateCcw, Download, Disc3, Tags, Trash2, Upload,
@@ -41,10 +41,9 @@ import { downloadLyricsLrc } from '@/utils/audio/downloadTrack';
 import { useRetranscribe } from '@/stores/retranscribeStore';
 
 import { saveJson } from '@/utils/storage/saveFile';
-import { getSnapshot as getEngineSnapshot, subscribe as subscribeEngine } from '@/audio/engine';
-import { LyricEditorModal } from '@/components/player/LyricEditorModal';
 import { seedLinesFromLrc } from '@/components/player/lyric-editor/lrcSeed';
 import type { EditLine } from '@/components/player/lyric-editor/timingModel';
+import { WordPlacementEditor, durationSeconds } from './songActions/WordPlacementEditor';
 import { BottomSheet, useIsMobile } from '@/components/shared/overlays/BottomSheet';
 import { YUE2_BACKEND_ID } from '@/utils/lyrics/yue2CaptionSource';
 import { MeasureMetadataDialog } from '@/components/library/MeasureMetadataDialog';
@@ -142,44 +141,6 @@ const Item: React.FC<ItemProps> = ({ icon, label, onClick, tone, disabled, title
 const Divider: React.FC = () => (
   <div className="border-t border-zinc-200 dark:border-white/5 my-1" />
 );
-
-/**
- * The lyric editor, mounted only while it is open.
- *
- * The editor's transport is the app's single audio element, so it has to be
- * handed the engine's live playhead — a subscription that would otherwise sit
- * on every row of the library. One row, while the modal is up, is the cost.
- */
-/** A song row's duration is seconds or a formatted "m:ss"; the editor works in seconds. */
-function durationSeconds(value: unknown): number {
-  if (typeof value === 'number' && Number.isFinite(value)) return value;
-  if (typeof value === 'string') {
-    const mmss = /^(\d+):(\d{1,2})$/.exec(value.trim());
-    if (mmss) return Number(mmss[1]) * 60 + Number(mmss[2]);
-    const n = Number(value);
-    return Number.isFinite(n) ? n : 0;
-  }
-  return 0;
-}
-
-const WordPlacementEditor: React.FC<{
-  song: Song; audioUrl: string; seed: EditLine[] | null; onClose: () => void;
-}> = ({ song, audioUrl, seed, onClose }) => {
-  const engine = useSyncExternalStore(subscribeEngine, getEngineSnapshot);
-  // A song row's duration is seconds or a formatted "m:ss"; the editor works in
-  // seconds. The engine's length is the fallback for a row that has none yet.
-  const duration = durationSeconds(song.duration) || engine.duration;
-  return (
-    <LyricEditorModal
-      audioUrl={audioUrl}
-      title={song.title}
-      duration={duration}
-      currentTime={engine.currentTime}
-      seed={seed}
-      onClose={onClose}
-    />
-  );
-};
 
 /** Words in a `.lyrics.json`, for deciding whether there is anything to place. */
 function countSidecarWords(data: { lines?: Array<{ words?: unknown[] }> } | null): number {

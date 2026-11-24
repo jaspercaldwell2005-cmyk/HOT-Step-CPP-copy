@@ -17,6 +17,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/context/AuthContext';
 import { useGlobalParamsStore } from '@/stores/globalParamsStore';
 import { usePersistedState } from '@/hooks/usePersistedState';
+import { errorMessage } from '@/utils/format/errorMessage';
 import { GenreSelector } from './GenreSelector';
 import { InspirePreview } from './InspirePreview';
 import {
@@ -210,8 +211,8 @@ export const InstaGenPanel: React.FC<InstaGenPanelProps> = ({ onSongCreated, act
       if (songId) {
         try { const { song } = await readSong(songId); onSongCreated?.(song); } catch { /* library refresh still runs */ }
       }
-    } catch (err: any) {
-      failManualQueueItem(queueId, err.message || 'Generation failed');
+    } catch (err) {
+      failManualQueueItem(queueId, errorMessage(err) || 'Generation failed');
     }
   }, [onSongCreated]);
 
@@ -237,7 +238,7 @@ export const InstaGenPanel: React.FC<InstaGenPanelProps> = ({ onSongCreated, act
       setEditedLyrics(output.result.lyrics);
       setEditedCaption(output.result.caption);
       setPhase('preview');
-    } catch (err: any) { setError(err.message || 'Preview failed'); setPhase('input'); }
+    } catch (err) { setError(errorMessage(err) || 'Preview failed'); setPhase('input'); }
     finally { setActivePreviewJob(null); }
   }, [canSubmit, token, captureInput]);
 
@@ -261,7 +262,7 @@ export const InstaGenPanel: React.FC<InstaGenPanelProps> = ({ onSongCreated, act
       void trackRender(job.id, queueId, token);
       localStorage.removeItem('hs-instagen-preview-document');
       setPhase('input'); setInspireResult(null); setPreviewDocument(null);
-    } catch (err: any) { setError(err.message || 'Approval failed'); setPhase('preview'); }
+    } catch (err) { setError(errorMessage(err) || 'Approval failed'); setPhase('preview'); }
   }, [inspireResult, previewDocument, token, editedLyrics, editedCaption, trackRender]);
 
   const handleDirectGenerate = useCallback(async () => {
@@ -272,7 +273,7 @@ export const InstaGenPanel: React.FC<InstaGenPanelProps> = ({ onSongCreated, act
       const { job } = await instaWorkflowApi.direct(input);
       const queueId = addManualQueueItem({ title: input.caption || 'Auto-Gen', caption: input.caption });
       void trackRender(job.id, queueId, token);
-    } catch (err: any) { setError(err.message || 'Generation failed'); }
+    } catch (err) { setError(errorMessage(err) || 'Generation failed'); }
   }, [canSubmit, token, captureInput, trackRender]);
 
   // ── Refine in Custom-Gen — write preview data to CreatePanel's persisted state ──

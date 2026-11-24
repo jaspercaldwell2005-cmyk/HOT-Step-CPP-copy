@@ -17,15 +17,17 @@ import { COVER_AR_DEFAULT, clampCoverAr } from '@/components/cover-studio/build/
 import { barRanges } from '@/utils/abc/abcSectionMove';
 import { notify } from '@/components/shared/feedback/Toast';
 import { yue2PickAtEnqueue } from '@/utils/lyrics/yue2CaptionSource';
+import { readJson, writeJson } from '@/utils/storage/storageJson';
+import { errorMessage } from '@/utils/format/errorMessage';
 
 const YUE2 = 'yue2';
 const SESSION_KEY = 'hs-create-buildSessionId';
 const PLAN_KEY = 'hs-create-buildPlan';
 
-const read = <T,>(key: string, fallback: T): T => {
-  try { const raw = localStorage.getItem(key); return raw === null ? fallback : JSON.parse(raw) as T; } catch { return fallback; }
-};
-const write = (key: string, value: unknown) => { try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* storage full or blocked: the build just is not remembered */ } };
+const read = <T,>(key: string, fallback: T): T => readJson(key, fallback);
+// writeJson already answers a full quota or a blocked browser with false, so
+// the build simply is not remembered rather than throwing into a handler.
+const write = (key: string, value: unknown) => { writeJson(key, value); };
 
 
 /** Why Build by section is unavailable on this backend or setting, or ''. */
@@ -103,7 +105,7 @@ export const CreateBuildTab: React.FC<Props> = ({ token, getParams, onSave, onOn
     try {
       const data = await generateApi.yue2Plan({ ...params, yue2Pick: yue2PickAtEnqueue(null, edited.ar === undefined ? {} : { lmAdapterArScale: edited.ar }), randomSeed: true, seed: -1 } as never);
       setPlan({ abc: data.abc, seed: data.seed });
-    } catch (err) { setPlanError(err instanceof Error ? err.message : String(err)); }
+    } catch (err) { setPlanError(errorMessage(err)); }
     finally { setPlanning(false); }
   }, [getParams, edited.ar]);
 

@@ -4,6 +4,7 @@ import { Disc3, Plus, FileText, MoreVertical, RefreshCw, Link2, Trash2, Search, 
 import type { LyricsSet, SongLyric } from '@/services/lireekApi';
 import { useDisguiseMode } from '@/hooks/useDisguiseMode';
 import { useClickOutside } from '@/hooks/useClickOutside';
+import { EmptyState } from '@/components/shared/layout/EmptyState';
 
 function parseSongs(songs: SongLyric[] | string): SongLyric[] {
   if (typeof songs === 'string') {
@@ -105,31 +106,30 @@ export const AlbumGrid: React.FC<AlbumGridProps> = ({
       </div>
 
       {albums.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 text-center">
-          <div className="w-16 h-16 rounded-full bg-white/5 flex items-center justify-center mb-4">
-            <Disc3 className="w-8 h-8 text-zinc-600" />
-          </div>
-          <h3 className="text-base font-semibold text-zinc-600 dark:text-zinc-400 mb-2">No albums yet</h3>
-          <p className="text-sm text-zinc-500 max-w-xs mb-4">
-            Fetch lyrics for an album or add one manually.
-          </p>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={onAddAlbum}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-pink-600 hover:bg-pink-500 text-white text-sm font-semibold transition-all"
-            >
-              <Search className="w-4 h-4" />
-              Fetch from Genius
-            </button>
-            <button
-              onClick={onAddManual}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-zinc-300 dark:border-white/10 text-zinc-700 dark:text-zinc-300 hover:text-white text-sm font-semibold transition-all"
-            >
-              <PenLine className="w-4 h-4" />
-              Add Manually
-            </button>
-          </div>
-        </div>
+        <EmptyState
+          icon={Disc3}
+          title="No albums yet"
+          hint="Fetch lyrics for an album or add one manually."
+          size="lg"
+          action={
+            <div className="flex items-center gap-3">
+              <button
+                onClick={onAddAlbum}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-pink-600 hover:bg-pink-500 text-white text-sm font-semibold transition-all"
+              >
+                <Search className="w-4 h-4" />
+                Fetch from Genius
+              </button>
+              <button
+                onClick={onAddManual}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-zinc-300 dark:border-white/10 text-zinc-700 dark:text-zinc-300 hover:text-white text-sm font-semibold transition-all"
+              >
+                <PenLine className="w-4 h-4" />
+                Add Manually
+              </button>
+            </div>
+          }
+        />
       ) : (
         <div ref={gridRef} className="grid grid-cols-[repeat(auto-fill,minmax(min(220px,calc(50%_-_8px)),1fr))] gap-4">
           {albums.map((album, idx) => {

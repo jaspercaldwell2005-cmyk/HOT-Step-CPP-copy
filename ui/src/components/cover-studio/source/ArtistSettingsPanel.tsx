@@ -10,6 +10,7 @@ import { Toggle } from '@/components/shared/controls/Toggle';
 import { ParamLabel } from '@/components/shared/controls/ParamLabel';
 import { CoverArtistGrid } from './CoverArtistGrid';
 import { formatDecimal } from '@/utils/format/format';
+import { baseName } from '@/utils/paths/baseName';
 
 interface ArtistSettingsPanelProps {
   artists: Artist[];
@@ -125,7 +126,7 @@ export const ArtistSettingsPanel: React.FC<ArtistSettingsPanelProps> = (props) =
               <div className="flex items-center gap-2">
                 <Zap className="w-3 h-3 text-pink-400" />
                 <span className="text-[10px] text-zinc-500 truncate flex-1">
-                  {selectedPreset.adapter_path.split(/[\\/]/).pop()}
+                  {baseName(selectedPreset.adapter_path)}
                 </span>
                 <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-pink-900/30 text-pink-400">ADAPTER</span>
               </div>
@@ -134,7 +135,7 @@ export const ArtistSettingsPanel: React.FC<ArtistSettingsPanelProps> = (props) =
               <div className="flex items-center gap-2">
                 <Music className="w-3 h-3 text-amber-400" />
                 <span className="text-[10px] text-zinc-500 truncate flex-1">
-                  {selectedPreset.reference_track_path.split(/[\\/]/).pop()}
+                  {baseName(selectedPreset.reference_track_path)}
                 </span>
                 <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-900/30 text-amber-400">REF</span>
               </div>

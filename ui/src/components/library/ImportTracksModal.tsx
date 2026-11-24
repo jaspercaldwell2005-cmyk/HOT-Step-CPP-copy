@@ -22,6 +22,7 @@ import { formatBytes } from '@/utils/format/format';
 import { formatPercent } from '@/utils/format/format';
 import { useEscapeKey } from '@/hooks/useEscapeKey';
 import { emit } from '@/utils/appEvents';
+import { errorMessage } from '@/utils/format/errorMessage';
 
 /** Mirrors IMPORT_EXTENSIONS in server/src/services/library/importTrack.ts —
  *  the server is the authority and re-checks every upload. */
@@ -130,7 +131,7 @@ export const ImportTracksModal: React.FC = () => {
             assetId: await uploadImportAsset(file, (fraction) => setProgress((index + fraction) / files.length)),
           });
         }
-        catch (err) { errors.push({ file: file.name, error: (err as Error).message }); }
+        catch (err) { errors.push({ file: file.name, error: errorMessage(err) }); }
         setProgress((index + 1) / files.length);
       }
       setPhase('converting');
@@ -159,8 +160,8 @@ export const ImportTracksModal: React.FC = () => {
       setFailures(errors);
       if (errors.length === 0) { close(); return; }
       setPhase('done');
-    } catch (err: any) {
-      setError(err.message || 'Import failed');
+    } catch (err) {
+      setError(errorMessage(err) || 'Import failed');
       setPhase('picking');
     }
   }, [token, files, runPp, description, close]);

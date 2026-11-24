@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { X, Save, RotateCcw, Code2, Loader2 } from 'lucide-react';
 import { lireekApi } from '@/services/lireekApi';
 import { QueryError } from '@/components/shared/feedback/QueryError';
+import { errorMessage } from '@/utils/format/errorMessage';
 
 interface PromptData {
   name: string;
@@ -65,7 +66,7 @@ export const PromptEditor: React.FC<Props> = ({ open, onClose }) => {
       flash('Saved');
       void snapshot.refetch();
     },
-    onError: err => flash(`Save failed: ${(err as Error).message}`, 3000),
+    onError: err => flash(`Save failed: ${errorMessage(err)}`, 3000),
   });
 
   const resetMut = useMutation({
@@ -76,7 +77,7 @@ export const PromptEditor: React.FC<Props> = ({ open, onClose }) => {
       if (updated) setEditContent(updated.custom ?? updated.default_content ?? '');
       setDirty(false);
     },
-    onError: err => flash(`Reset failed: ${(err as Error).message}`, 3000),
+    onError: err => flash(`Reset failed: ${errorMessage(err)}`, 3000),
   });
 
   const handleSave = () => {

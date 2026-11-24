@@ -10,7 +10,7 @@ import type { Song } from '@/types';
 import { CoverImage } from '@/components/shared/songs/CoverImage';
 import { Waveform } from './Waveform';
 import { useDisguiseMode } from '@/hooks/useDisguiseMode';
-import { formatClock } from '@/utils/format/format';
+import { formatTrackDuration } from '@/utils/format/trackDuration';
 
 interface Props {
   song: Song;
@@ -28,7 +28,7 @@ interface Props {
   onClose: () => void;
 }
 
-const fmt = (s: number) => (!s || !isFinite(s) ? '0:00' : formatClock(s));
+const fmt = (s: number) => formatTrackDuration(s, '0:00');
 
 let nextHistoryOwner = 0;
 let pendingHistoryBack: Promise<void> | undefined;

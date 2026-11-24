@@ -20,12 +20,13 @@ import { trainingQueries as tq } from '@/queries/training-data/queries';
 import { ParamLabel } from '@/components/shared/controls/ParamLabel';
 import { Toggle } from '@/components/shared/controls/Toggle';
 import { CARD } from '@/components/training-studio/lib/yue2CardUi';
-import { isPresent } from '@/utils/guards';
+import { baseName } from '@/utils/paths/baseName';
+import { tailPath } from '@/utils/paths/tailPath';
 
 const INPUT = 'rounded-lg px-3 py-2 text-sm bg-zinc-100 dark:bg-black/20 border border-zinc-300 dark:border-white/10 text-zinc-800 dark:text-zinc-200 focus:outline-none focus:border-amber-500';
 
-const lastFolder = (p: string) => p.split(/[\\/]/).filter(isPresent).slice(-2).join('/');
-const fileName = (p: string) => p.split(/[\\/]/).filter(isPresent).pop() ?? p;
+const lastFolder = (p: string) => tailPath(p, 2);
+const fileName = (p: string) => baseName(p) || p;
 
 export const SendToLyricStudio: React.FC = () => {
   const { t } = useTranslation();

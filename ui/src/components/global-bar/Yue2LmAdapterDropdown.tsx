@@ -46,9 +46,11 @@ import { Slider } from '@/components/shared/controls/Slider';
 import { StyledSelect } from '@/components/shared/controls/StyledSelect';
 import { FileBrowserModal } from '@/components/shared/overlays/FileBrowserModal';
 import { formatBytes } from '@/utils/format/format';
+import { tailPath } from '@/utils/paths/tailPath';
 import { errorMessage } from '@/utils/format/errorMessage';
 import { formatLoss } from '@/utils/format/format';
 import { isPresent } from '@/utils/guards';
+import { clamp01 } from '@/utils/format/clamp';
 
 const inputClasses =
   'w-full px-3 py-2 rounded-xl bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-white/10 ' +
@@ -101,7 +103,7 @@ function keysFor(kind: SlotKind) {
 /** Last two path segments, extension dropped — enough to tell two runs apart
  *  without spilling an absolute path across the badge. */
 function shortName(p: string): string {
-  return p.split(/[\\/]/).slice(-2).join('/').replace(/\.safetensors$/i, '');
+  return tailPath(p, 2).replace(/\.safetensors$/i, '');
 }
 
 function sameDials(a: Dials, b: Dials): boolean {
@@ -142,7 +144,7 @@ function useYue2Adapters() {
       early: num(k.early), mid: num(k.mid), late: num(k.late),
       plan: defaults[k.plan] === undefined ? null : num(k.plan),
       rebase: Number.isFinite(Number(defaults[k.rebase])) && defaults[k.rebase] !== undefined
-        ? Math.min(1, Math.max(0, Number(defaults[k.rebase]))) : UNITY.rebase,
+        ? clamp01(Number(defaults[k.rebase])) : UNITY.rebase,
     };
   };
 

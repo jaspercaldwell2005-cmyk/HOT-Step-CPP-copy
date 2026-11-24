@@ -19,6 +19,7 @@ import { queryClient } from '@/queries/client';
 import { postProcessStatusOptions } from '@/queries/shell-queue/songs';
 import { useGlobalParamsStore } from './globalParamsStore';
 import { forgetPeaks } from '@/audio/peaksClient';
+import { errorMessage } from '@/utils/format/errorMessage';
 
 export interface PostProcessRun {
   songId: string;
@@ -322,7 +323,7 @@ export async function revertPostProcessingById(songId: string, title?: string): 
       title: title || _runs[songId]?.title || 'Untitled',
       status: 'failed',
       stage: 'Failed',
-      error: `Could not remove the processed version: ${err.message}`,
+      error: `Could not remove the processed version: ${errorMessage(err)}`,
       alreadyProcessed: false,
     });
     throw err;

@@ -9,6 +9,7 @@ import type { Generation, Profile } from '@/services/lireekApi';
 import { StreamingPanel } from '@/components/lyric-studio/queue/StreamingPanel';
 import { StyledSelect } from '@/components/shared/controls/StyledSelect';
 import { ParamLabel } from '@/components/shared/controls/ParamLabel';
+import { EmptyState } from '@/components/shared/layout/EmptyState';
 import { getCachedProviders } from '@/components/lyric-studio/write/ProviderSelector';
 import { useStreamingStore, startStreamGenerate } from '@/stores/streamingStore';
 import { useBackendStore } from '@/stores/backendStore';
@@ -26,6 +27,7 @@ import {
 } from '@/utils/lyrics/yue2CaptionSource';
 import { formatDay } from '@/utils/format/dateUtils';
 import { plural } from '@/utils/format/plural';
+import { errorMessage } from '@/utils/format/errorMessage';
 
 /**
  * Whether these lyrics have already produced a track, and whether one was kept.
@@ -483,8 +485,8 @@ export const WrittenSongsTab: React.FC<WrittenSongsTabProps> = ({
           () => onRefresh(),
         );
       showToast(`Generated ${genCount} new ${plural(genCount, 'song')}`);
-    } catch (err: any) {
-      showToast(`Failed: ${err.message}`);
+    } catch (err) {
+      showToast(`Failed: ${errorMessage(err)}`);
     } finally {
       setGenerating(false);
     }
@@ -519,8 +521,8 @@ export const WrittenSongsTab: React.FC<WrittenSongsTabProps> = ({
         },
       );
       setRefineStreamDone(true);
-    } catch (err: any) {
-      showToast(`Refinement failed: ${err.message}`);
+    } catch (err) {
+      showToast(`Refinement failed: ${errorMessage(err)}`);
       setRefineStreamDone(true);
     } finally {
       setRefiningId(null);
@@ -656,15 +658,11 @@ export const WrittenSongsTab: React.FC<WrittenSongsTabProps> = ({
 
       {/* Generations list */}
       {generations.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 text-center">
-          <div className="w-14 h-14 rounded-full bg-white/5 flex items-center justify-center mb-4">
-            <Music2 className="w-7 h-7 text-zinc-600" />
-          </div>
-          <h3 className="text-base font-semibold text-zinc-600 dark:text-zinc-400 mb-2">{t('lyric.noGeneratedLyricsYet')}</h3>
-          <p className="text-sm text-zinc-500 max-w-xs">
-            {t('lyric.generateFromProfile')}
-          </p>
-        </div>
+        <EmptyState
+          icon={Music2}
+          title={t('lyric.noGeneratedLyricsYet')}
+          hint={t('lyric.generateFromProfile')}
+        />
       ) : (
         <div className="space-y-1">
           {generations.map((gen, idx) => {

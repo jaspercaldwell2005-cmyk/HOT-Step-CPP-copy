@@ -8,6 +8,8 @@ import { useAuth } from '@/context/AuthContext';
 import type { Profile } from '@/services/lireekApi';
 import { StreamingPanel } from '@/components/lyric-studio/queue/StreamingPanel';
 import { formatDay } from '@/utils/format/dateUtils';
+import { EmptyState } from '@/components/shared/layout/EmptyState';
+import { errorMessage } from '@/utils/format/errorMessage';
 
 interface ProfilesTabProps {
   lyricsSetId: number;
@@ -57,8 +59,8 @@ export const ProfilesTab: React.FC<ProfilesTabProps> = ({
           showToast('Profile built successfully');
         },
       });
-    } catch (err: any) {
-      showToast(`Build failed: ${err.message}`);
+    } catch (err) {
+      showToast(`Build failed: ${errorMessage(err)}`);
       setBuilding(false);
       setStreamDone(true);
     }
@@ -128,15 +130,11 @@ export const ProfilesTab: React.FC<ProfilesTabProps> = ({
 
       {/* Profile list */}
       {profiles.length === 0 && !building ? (
-        <div className="flex flex-col items-center justify-center py-16 text-center">
-          <div className="w-14 h-14 rounded-full bg-white/5 flex items-center justify-center mb-4">
-            <Users className="w-7 h-7 text-zinc-600" />
-          </div>
-          <h3 className="text-base font-semibold text-zinc-600 dark:text-zinc-400 mb-2">{t('lyric.noProfilesYet')}</h3>
-          <p className="text-sm text-zinc-500 max-w-xs">
-            {t('lyric.buildProfileDesc')}
-          </p>
-        </div>
+        <EmptyState
+          icon={Users}
+          title={t('lyric.noProfilesYet')}
+          hint={t('lyric.buildProfileDesc')}
+        />
       ) : (
         <div className="space-y-2">
           {profiles.map((profile, idx) => {

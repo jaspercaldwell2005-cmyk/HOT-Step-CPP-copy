@@ -18,6 +18,7 @@ import { vstApi, type VstPlugin, type VstChainEntry } from '@/services/api';
 import { hashImportValue, type VstChainPresetBody } from '@/services/preferencesApi';
 import { PresetCollection, type PresetCollectionSnapshot } from '@/services/presetCollection';
 import { readJson } from '@/utils/storage/storageJson';
+import { errorMessage } from '@/utils/format/errorMessage';
 
 // ── Presets (named chain snapshots) ──────────────────────────────────────────
 //
@@ -168,8 +169,8 @@ export const useVstChainStore = create<VstChainState>((set, get) => {
       await queryManager.invalidate(queryClient, vstScanOptions().queryKey);
       await queryClient.query(vstScanOptions());
       set({ scanning: false });
-    } catch (err: any) {
-      set({ scanning: false, scanError: err.message });
+    } catch (err) {
+      set({ scanning: false, scanError: errorMessage(err) });
     }
   },
 

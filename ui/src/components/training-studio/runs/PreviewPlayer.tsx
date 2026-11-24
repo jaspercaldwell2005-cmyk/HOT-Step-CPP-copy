@@ -9,8 +9,6 @@ import { Download, Pause, Play, SkipBack } from 'lucide-react';
 import { formatClock } from '@/utils/format/format';
 import { emit } from '@/utils/appEvents';
 
-const fmt = (s: number) => formatClock(s);
-
 // Only the player last started holds a connection. Chrome keeps a paused
 // <audio>'s connection open while it buffers, and with six per host a few
 // played takes stall every other request; the rest drop their src and keep
@@ -75,13 +73,13 @@ export const PreviewPlayer: React.FC<{ src: string; label?: string; sublabel?: s
             {jumps.map(j => <div key={j.f} className="absolute inset-y-0 w-px bg-zinc-500/50" style={{ left: `${j.f * 100}%` }} />)}
           </div>
         </div>
-        <div className="shrink-0 text-[11px] tabular-nums text-zinc-600 dark:text-zinc-300 w-[88px] text-right">{fmt(time)} / {fmt(duration)}</div>
+        <div className="shrink-0 text-[11px] tabular-nums text-zinc-600 dark:text-zinc-300 w-[88px] text-right">{formatClock(time)} / {formatClock(duration)}</div>
       </div>
       <div className="mt-1.5 flex items-center gap-1.5 pl-12 text-[10px]">
         <button type="button" onClick={() => seek(0)} className="px-2 py-0.5 rounded border border-zinc-300/70 dark:border-white/10 hover:bg-zinc-500/10 flex items-center gap-1"><SkipBack size={10} />start</button>
         <button type="button" onClick={() => seek(time - 15)} className="px-2 py-0.5 rounded border border-zinc-300/70 dark:border-white/10 hover:bg-zinc-500/10">−15 s</button>
         <button type="button" onClick={() => seek(time + 15)} className="px-2 py-0.5 rounded border border-zinc-300/70 dark:border-white/10 hover:bg-zinc-500/10">+15 s</button>
-        {jumps.map(j => <button key={j.f} type="button" onClick={() => seek(j.t)} className="px-2 py-0.5 rounded border border-zinc-300/70 dark:border-white/10 hover:bg-zinc-500/10">{fmt(j.t)}</button>)}
+        {jumps.map(j => <button key={j.f} type="button" onClick={() => seek(j.t)} className="px-2 py-0.5 rounded border border-zinc-300/70 dark:border-white/10 hover:bg-zinc-500/10">{formatClock(j.t)}</button>)}
         <span className="ml-1 text-zinc-500">shaded = last third</span>
         {downloadName && <a href={downloadSrc ?? src} download={downloadName} className="ml-auto px-2 py-0.5 rounded border border-zinc-300/70 dark:border-white/10 hover:bg-zinc-500/10 flex items-center gap-1"><Download size={10} />download</a>}
       </div>

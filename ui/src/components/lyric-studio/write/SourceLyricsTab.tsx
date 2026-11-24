@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChevronDown, ChevronRight, Pencil, Trash2, Save, X, FileText, Plus } from 'lucide-react';
 import type { LyricsSet, SongLyric } from '@/services/lireekApi';
+import { EmptyState } from '@/components/shared/layout/EmptyState';
 
 function parseSongs(songs: SongLyric[] | string): SongLyric[] {
   if (typeof songs === 'string') {
@@ -26,15 +27,12 @@ export const SourceLyricsTab: React.FC<SourceLyricsTabProps> = ({ album, onDelet
 
   if (songs.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 text-center px-8">
-        <div className="w-14 h-14 rounded-full bg-white/5 flex items-center justify-center mb-4">
-          <FileText className="w-7 h-7 text-zinc-600" />
-        </div>
-        <h3 className="text-base font-semibold text-zinc-600 dark:text-zinc-400 mb-2">No source lyrics</h3>
-        <p className="text-sm text-zinc-500 max-w-xs mb-4">
-          Add songs manually or fetch lyrics from Genius.
-        </p>
-        {onAddSong && (
+      <EmptyState
+        icon={FileText}
+        title="No source lyrics"
+        hint="Add songs manually or fetch lyrics from Genius."
+        className="px-8"
+        action={onAddSong && (
           <button
             onClick={onAddSong}
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-sm font-semibold transition-all"
@@ -43,7 +41,7 @@ export const SourceLyricsTab: React.FC<SourceLyricsTabProps> = ({ album, onDelet
             Add Song Manually
           </button>
         )}
-      </div>
+      />
     );
   }
 

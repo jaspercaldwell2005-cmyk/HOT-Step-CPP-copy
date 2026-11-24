@@ -1,160 +1,37 @@
-// SongList.tsx — Song library display with bulk selection + source filtering
-// Ported from hot-step-9000 visual design with Tailwind.
+// SongList.tsx — The song library: what is on screen, and in what order.
+//
+// Three view modes, a source filter, pagination and selection. Each has one
+// owner: songRow/* draws a song (card, list row, table row) and songList/* owns
+// the chrome around it (filters, pagination, bulk actions, A/B bar). This file
+// composes them and holds only the state that crosses those seams.
 
-import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
-import {
-  Play, Pause, Trash2, RotateCcw, Music,
-  Download, CheckSquare, Square, MinusSquare, X, Pencil, ListPlus,
-  LayoutGrid, List as ListIcon, Table2, ArrowLeftRight, Loader2,
-  Check, Columns3, ChevronLeft, ChevronRight, Radio, Upload,
-  GitCompare,
-  FileArchive, Info,
-} from 'lucide-react';
+import { LayoutGrid, List as ListIcon, Music, Table2, Upload, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { ParamLabel } from '@/components/shared/controls/ParamLabel';
-import { moveFocus } from '@/utils/hotkeys';
-import { HOTKEY_EVENT } from '@/hooks/useGlobalHotkeys';
 import type { Song } from '@/types';
-import { togglePlay, usePlaybackSelector } from '@/stores/playbackStore';
-import { useMm3StreamAudio, mm3StreamTakeState } from '@/stores/mm3StreamStore';
-import { useABCompareSelector, playAB, openModal as openABModal, clear as clearAB } from '@/stores/abCompareStore';
-import { useDisguiseMode } from '@/hooks/useDisguiseMode';
-import { downloadAll } from '@/utils/audio/downloadTrack';
-import { useAuth } from '@/context/AuthContext';
-import { HoverFullText } from '@/components/shared/controls/HoverFullText';
-import { SongActionsMenu } from '@/components/shared/songs/SongActionsMenu';
-import { openImportTracks } from './ImportTracksModal';
-import { CoverImage } from '@/components/shared/songs/CoverImage';
-import { displayTitle, displaySubtext } from '@/utils/songDisplay';
-import { formatRelativeDay } from '@/utils/format/dateUtils';
-import { applySelectClick } from '@/utils/rangeSelect';
-import { buildSongBadges, coverTag } from './songBadges';
-import { trackMetadata } from '@/components/details/songFacts';
+import { usePlaybackSelector } from '@/stores/playbackStore';
+import { useABCompareSelector } from '@/stores/abCompareStore';
 import { usePersistedState, writePersistedState } from '@/hooks/usePersistedState';
-import { formatClock } from '@/utils/format/format';
-import { formatPercent } from '@/utils/format/format';
-import { writeJson } from '@/utils/storage/storageJson';
 import { plural } from '@/utils/format/plural';
-import { clamp01 } from '@/utils/format/clamp';
+import { openImportTracks } from './ImportTracksModal';
+import { SongCard } from './songRow/SongCard';
+import { SongItem } from './songRow/SongItem';
+import { SongTable } from './songRow/SongTable';
+import { ABCompareBar } from './songList/ABCompareBar';
+import { BulkActionBar } from './songList/BulkActionBar';
+import { PaginationControls } from './songList/PaginationControls';
+import { SourceFilterTabs } from './songList/SourceFilterTabs';
+import { getSongSource } from '@/utils/songs/source';
+import { SOURCE_FILTERS, countSongsBySource, type SourceFilter } from './songList/filters';
+import { useSongPagination } from './songList/pagination';
+import { useBulkActions } from './songList/useBulkActions';
+import { useSongRowFocus } from './songList/useSongRowFocus';
+import { useSongSelection } from './songList/useSongSelection';
 
 /** Grid card size: the minimum card width in px, one saved setting for every song grid. */
 const CARD_SIZE_KEY = 'hs-songGridCardSize';
 const CARD_SIZE = { min: 120, max: 320, default: 150 };
-
-function SongParameterBadges({ song }: { song: Song }) {
-  const { t } = useTranslation();
-  const { isDisguised } = useDisguiseMode();
-  const tag = isDisguised ? '' : coverTag(song);
-  const badges = buildSongBadges(song);
-  if (!tag && !badges.length) return null;
-  return (
-    <div className="mt-1 min-w-0 space-y-1">
-      {tag && <div className="text-[11px] text-cyan-700 dark:text-cyan-300 truncate"
-        title={`${t('library.badge.tag')}: ${tag}`}>{t('library.badge.tag')}: {tag}</div>}
-      {badges.length > 0 && <div className="flex flex-wrap gap-1">
-        {badges.map(badge => (
-          <span key={badge.label} title={`${t(`library.badge.${badge.label}`)}: ${badge.value}`}
-            className="max-w-full truncate rounded border border-zinc-200 dark:border-white/10 bg-zinc-100 dark:bg-white/5 px-1.5 py-0.5 text-[10px] leading-tight text-zinc-600 dark:text-zinc-300">
-            {t(`library.badge.${badge.label}`)}: {badge.value}
-          </span>
-        ))}
-      </div>}
-    </div>
-  );
-}
-
-// ── Source filter definitions ────────────────────────────────────────────────
-
-type SourceFilter = 'all' | 'create' | 'insta-gen' | 'lyric-studio' | 'cover-studio' | 'repaint' | 'stem-builder' | 'builder' | 'import';
-
-const SOURCE_FILTERS: { id: SourceFilter; label: string; color: string }[] = [
-  { id: 'all',           label: 'All',           color: 'text-zinc-700 dark:text-zinc-300 bg-white/10 border-zinc-300 dark:border-white/10' },
-  { id: 'create',        label: 'Custom-Gen',   color: 'text-violet-300 bg-violet-500/15 border-violet-500/25' },
-  { id: 'insta-gen',     label: 'Auto-Gen',      color: 'text-fuchsia-300 bg-fuchsia-500/15 border-fuchsia-500/25' },
-  { id: 'lyric-studio',  label: 'Lyric Studio',  color: 'text-pink-300 bg-pink-500/15 border-pink-500/25' },
-  { id: 'cover-studio',  label: 'Cover Studio',  color: 'text-cyan-300 bg-cyan-500/15 border-cyan-500/25' },
-  { id: 'repaint',       label: 'Repaint',       color: 'text-amber-300 bg-amber-500/15 border-amber-500/25' },
-  { id: 'stem-builder',  label: 'Stem Build',    color: 'text-emerald-300 bg-emerald-500/15 border-emerald-500/25' },
-  { id: 'builder',       label: 'Song Builder',  color: 'text-indigo-300 bg-indigo-500/15 border-indigo-500/25' },
-  { id: 'import',        label: 'Imported',      color: 'text-sky-300 bg-sky-500/15 border-sky-500/25' },
-];
-
-function getSongSource(song: Song): string {
-  return (song.generationParams as any)?.source || (song.generation_params as any)?.source || 'create';
-}
-
-// ── Pagination ───────────────────────────────────────────────────────────────
-const PAGE_SIZE_KEY = 'hs-library-pageSize';
-const PAGE_SIZE_OPTIONS: (number | 'all')[] = [20, 40, 60, 80, 100, 'all'];
-
-function loadPageSize(): number | 'all' {
-  try {
-    const v = localStorage.getItem(PAGE_SIZE_KEY);
-    if (v === 'all') return 'all';
-    const n = v ? parseInt(v, 10) : NaN;
-    if ((PAGE_SIZE_OPTIONS as (number | string)[]).includes(n)) return n;
-  } catch { /* ignore */ }
-  return 40;
-}
-function savePageSize(v: number | 'all') {
-  try { localStorage.setItem(PAGE_SIZE_KEY, String(v)); } catch { /* ignore */ }
-}
-
-
-
-// ── Component ────────────────────────────────────────────────────────────────
-
-// ── Reusable pagination controls (rendered top + bottom) ─────────────────────
-const PaginationControls: React.FC<{
-  pageSize: number | 'all';
-  page: number;
-  totalPages: number;
-  onChangePageSize: (v: number | 'all') => void;
-  onPage: (updater: (p: number) => number) => void;
-}> = ({ pageSize, page, totalPages, onChangePageSize, onPage }) => (
-  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs min-w-0 max-w-full">
-    <div className="flex flex-wrap items-center gap-1.5 min-w-0">
-      <span className="text-zinc-500">Per page</span>
-      <div className="flex flex-wrap items-center rounded-lg border border-zinc-200 dark:border-white/10 overflow-hidden max-w-full">
-        {PAGE_SIZE_OPTIONS.map(opt => (
-          <button
-            key={String(opt)}
-            onClick={() => onChangePageSize(opt)}
-            className={`px-2.5 py-1 transition-colors ${
-              pageSize === opt
-                ? 'bg-pink-500/20 text-pink-400'
-                : 'text-zinc-500 hover:text-zinc-300 hover:bg-white/5'
-            }`}
-          >
-            {opt === 'all' ? 'All' : opt}
-          </button>
-        ))}
-      </div>
-    </div>
-    {pageSize !== 'all' && totalPages > 1 && (
-      <div className="flex items-center gap-2 text-zinc-500">
-        <button
-          onClick={() => onPage(p => Math.max(1, p - 1))}
-          disabled={page <= 1}
-          className="p-1 rounded hover:text-zinc-300 hover:bg-white/5 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-          title="Previous page"
-        >
-          <ChevronLeft size={16} />
-        </button>
-        <span className="tabular-nums whitespace-nowrap">Page {page} / {totalPages}</span>
-        <button
-          onClick={() => onPage(p => Math.min(totalPages, p + 1))}
-          disabled={page >= totalPages}
-          className="p-1 rounded hover:text-zinc-300 hover:bg-white/5 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-          title="Next page"
-        >
-          <ChevronRight size={16} />
-        </button>
-      </div>
-    )}
-  </div>
-);
 
 interface SongListProps {
   songs: Song[];
@@ -198,11 +75,8 @@ export const SongList: React.FC<SongListProps> = ({
   const isPlaying = usePlaybackSelector(s => s.isPlaying);
   const abTrackAId = useABCompareSelector(s => s.trackA?.id ?? null);
   const abTrackBId = useABCompareSelector(s => s.trackB?.id ?? null);
-  const hasBothAB = !!abTrackAId && !!abTrackBId;
   const abTrackATitle = useABCompareSelector(s => s.trackA?.title ?? '');
   const abTrackBTitle = useABCompareSelector(s => s.trackB?.title ?? '');
-  const [selectionMode, setSelectionMode] = useState(false);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>('all');
 
   // Internal view mode — persisted per context (title), initialized from prop
@@ -224,12 +98,12 @@ export const SongList: React.FC<SongListProps> = ({
     document.startViewTransition(apply);
   }, [cardSize]);
   const [activeViewMode, setActiveViewMode] = useState<'list' | 'grid' | 'table'>(() => {
-    try { const v = localStorage.getItem(storageKey); if (v === 'list' || v === 'grid' || v === 'table') return v; } catch {}
+    try { const v = localStorage.getItem(storageKey); if (v === 'list' || v === 'grid' || v === 'table') return v; } catch { /* ignore */ }
     return viewMode ?? 'list';
   });
   const changeViewMode = useCallback((m: 'list' | 'grid' | 'table') => {
     setActiveViewMode(m);
-    try { localStorage.setItem(storageKey, m); } catch {}
+    try { localStorage.setItem(storageKey, m); } catch { /* ignore */ }
   }, [storageKey]);
 
   // Client-side source filtering
@@ -238,199 +112,35 @@ export const SongList: React.FC<SongListProps> = ({
     return songs.filter(s => getSongSource(s) === sourceFilter);
   }, [songs, sourceFilter]);
 
-  // Count songs per source for filter badges. Keys are derived from
-  // SOURCE_FILTERS so adding a new source can't drift out of sync.
-  const sourceCounts = useMemo(() => {
-    const counts: Record<string, number> = { all: songs.length };
-    for (const f of SOURCE_FILTERS) if (f.id !== 'all') counts[f.id] = 0;
-    for (const s of songs) {
-      const src = getSongSource(s);
-      if (src in counts && src !== 'all') counts[src]++;
-      else counts.create++; // default to create for untagged / unknown
-    }
-    return counts;
-  }, [songs]);
+  // Counts per tab, derived from the same table the tabs render.
+  const sourceCounts = useMemo(() => countSongsBySource(songs), [songs]);
 
-  // ── Pagination ─────────────────────────────────────────────────────────────
-  const [pageSize, setPageSizeState] = useState<number | 'all'>(() => loadPageSize());
-  const [page, setPage] = useState(1);
-  const changePageSize = useCallback((v: number | 'all') => {
-    setPageSizeState(v); savePageSize(v); setPage(1);
-  }, []);
+  const { pageRows: pagedSongs, controls: paginationProps, reset: resetPage } = useSongPagination(filteredSongs);
+  const visibleIds = useMemo(() => filteredSongs.map(s => s.id), [filteredSongs]);
 
-  const totalPages = pageSize === 'all' ? 1 : Math.max(1, Math.ceil(filteredSongs.length / pageSize));
-  // Reset to page 1 when the filter changes; clamp if the list shrinks.
-  useEffect(() => { setPage(1); }, [sourceFilter]);
-  useEffect(() => { setPage(p => Math.min(p, totalPages)); }, [totalPages]);
+  const selection = useSongSelection({ visibleIds, onBulkDelete });
+  const rowsRef = useSongRowFocus({
+    pageSongs: pagedSongs,
+    viewKey: activeViewMode,
+    selectedIds: selection.selectedIds,
+    selectionMode: selection.selectionMode,
+    exitSelectionMode: selection.exitSelectionMode,
+    onPlay,
+    onBulkDelete,
+  });
+  const bulk = useBulkActions({
+    rows: filteredSongs,
+    selectedIds: selection.selectedIds,
+    exitSelectionMode: selection.exitSelectionMode,
+    onAddToPlaylist,
+    onExportZip,
+  });
 
-  const pagedSongs = useMemo(() => {
-    if (pageSize === 'all') return filteredSongs;
-    const start = (page - 1) * pageSize;
-    return filteredSongs.slice(start, start + pageSize);
-  }, [filteredSongs, page, pageSize]);
-
-  const paginationProps = { pageSize, page, totalPages, onChangePageSize: changePageSize, onPage: setPage };
-
-  // Range select: anchor = last plainly clicked / long-pressed row. Order is the
-  // current visible (sorted + filtered) list, so shift ranges follow what is on screen.
-  const anchorRef = useRef<string | null>(null);
-  const visibleOrder = useMemo(() => filteredSongs.map(s => s.id), [filteredSongs]);
-  const selectClick = useCallback((id: string, range: boolean) => {
-    setSelectedIds(prev => {
-      const r = applySelectClick(visibleOrder, { selected: prev, anchor: anchorRef.current }, id, range);
-      anchorRef.current = r.anchor;
-      return r.selected;
-    });
-  }, [visibleOrder]);
-  /** Click in selection mode: shift = range from anchor, ctrl/cmd or plain = toggle. */
-  const toggleSelection = useCallback((id: string, e?: { shiftKey?: boolean }) => {
-    selectClick(id, !!e?.shiftKey);
-  }, [selectClick]);
-
-  // Mobile long-press: enter select mode (anchor), or select the range to the anchor.
-  const LONG_PRESS_MS = 450;
-  const MOVE_TOLERANCE_PX = 10;
-  const pressRef = useRef<{ id: string; x: number; y: number; timer: number } | null>(null);
-  const suppressClickRef = useRef(false);
-  const cancelPress = useCallback(() => {
-    if (pressRef.current) { window.clearTimeout(pressRef.current.timer); pressRef.current = null; }
-  }, []);
-  useEffect(() => cancelPress, [cancelPress]);
-  const onRowsPointerDown = useCallback((e: React.PointerEvent) => {
-    if (e.pointerType === 'mouse') return;
-    const el = (e.target as HTMLElement).closest('[data-sel-id]') as HTMLElement | null;
-    if (!el || (e.target as HTMLElement).closest('button, a, input')) return;
-    const id = el.dataset.selId!;
-    cancelPress();
-    const timer = window.setTimeout(() => {
-      pressRef.current = null;
-      suppressClickRef.current = true;
-      if (!selectionMode) {
-        setSelectionMode(true);
-        setSelectedIds(new Set([id]));
-        anchorRef.current = id;
-      } else {
-        selectClick(id, true);
-      }
-      try { navigator.vibrate?.(15); } catch {}
-    }, LONG_PRESS_MS);
-    pressRef.current = { id, x: e.clientX, y: e.clientY, timer };
-  }, [selectionMode, selectClick, cancelPress]);
-  const onRowsPointerMove = useCallback((e: React.PointerEvent) => {
-    const p = pressRef.current;
-    if (p && Math.hypot(e.clientX - p.x, e.clientY - p.y) > MOVE_TOLERANCE_PX) cancelPress();
-  }, [cancelPress]);
-  const onRowsClickCapture = useCallback((e: React.MouseEvent) => {
-    // Swallow the click that follows a long-press so it does not toggle or open the song.
-    if (suppressClickRef.current) { suppressClickRef.current = false; e.stopPropagation(); e.preventDefault(); }
-  }, []);
-  const onRowsMouseDown = useCallback((e: React.MouseEvent) => {
-    // Shift-click would otherwise select text across the rows.
-    if (selectionMode && e.shiftKey) e.preventDefault();
-  }, [selectionMode]);
-
-  const selectAll = useCallback(() => {
-    setSelectedIds(new Set(filteredSongs.map(s => s.id)));
-  }, [filteredSongs]);
-
-  const deselectAll = useCallback(() => {
-    setSelectedIds(new Set());
-    anchorRef.current = null;
-  }, []);
-
-  const exitSelectionMode = useCallback(() => {
-    setSelectionMode(false);
-    setSelectedIds(new Set());
-    anchorRef.current = null;
-  }, []);
-
-  const handleBulkDelete = useCallback(() => {
-    if (selectedIds.size === 0) return;
-    onBulkDelete?.(Array.from(selectedIds));
-    exitSelectionMode();
-  }, [selectedIds, onBulkDelete, exitSelectionMode]);
-
-  // Global hotkeys (Up/Down/Enter/Delete/Esc): keyboard-focused row, drawn as an outline.
-  const rowsRef = useRef<HTMLDivElement>(null);
-  const [focusedId, setFocusedId] = useState<string | null>(null);
-  const pagedOrder = useMemo(() => pagedSongs.map(s => s.id), [pagedSongs]);
-  useEffect(() => {
-    const root = rowsRef.current;
-    if (!root || !focusedId) return;
-    const el = Array.from(root.querySelectorAll<HTMLElement>('[data-sel-id]')).find(n => n.dataset.selId === focusedId);
-    if (!el) return;
-    el.style.outline = '2px solid #ec4899';
-    el.style.outlineOffset = '-2px';
-    el.scrollIntoView({ block: 'nearest' });
-    return () => { el.style.outline = ''; el.style.outlineOffset = ''; };
-  }, [focusedId, pagedOrder, activeViewMode]);
-  useEffect(() => {
-    const onHotkey = (ev: Event) => {
-      const root = rowsRef.current;
-      // Only the visible list handles keys (several SongLists can be mounted).
-      if (!root || root.offsetParent === null) return;
-      const action = (ev as CustomEvent<{ action: string }>).detail?.action;
-      if (action === 'focusPrev' || action === 'focusNext') {
-        const next = moveFocus(pagedOrder, focusedId, action === 'focusNext' ? 1 : -1);
-        if (!next) return;
-        setFocusedId(next);
-      } else if (action === 'playFocused') {
-        const song = pagedSongs.find(s => s.id === focusedId);
-        if (!song) return;
-        onPlay(song);
-      } else if (action === 'deleteSelection') {
-        const ids = selectedIds.size > 0 ? Array.from(selectedIds) : (focusedId ? [focusedId] : []);
-        if (ids.length === 0 || !onBulkDelete) return;
-        onBulkDelete(ids);
-        exitSelectionMode();
-        if (focusedId && ids.includes(focusedId)) setFocusedId(null);
-      } else if (action === 'clearSelection') {
-        if (selectionMode || selectedIds.size > 0) exitSelectionMode();
-        else if (focusedId) setFocusedId(null);
-        else return;
-      } else {
-        return;
-      }
-      ev.preventDefault();
-    };
-    window.addEventListener(HOTKEY_EVENT, onHotkey);
-    return () => window.removeEventListener(HOTKEY_EVENT, onHotkey);
-  }, [pagedOrder, pagedSongs, focusedId, selectedIds, selectionMode, onPlay, onBulkDelete, exitSelectionMode]);
-
-  const [bulkDownloading, setBulkDownloading] = useState(false);
-  const { token } = useAuth();
-
-  const handleBulkDownload = useCallback(async () => {
-    if (selectedIds.size === 0 || bulkDownloading || !token) return;
-    const selected = filteredSongs.filter(s => selectedIds.has(s.id));
-    if (selected.length === 0) return;
-    setBulkDownloading(true);
-    try {
-      const failures = await downloadAll(selected);
-      if (failures.length) window.alert(`Some downloads failed:\n${failures.join('\n')}`);
-    } catch (err) {
-      window.alert(`Download failed: ${(err as Error).message}`);
-    } finally {
-      setBulkDownloading(false);
-    }
-  }, [selectedIds, filteredSongs, bulkDownloading, token]);
-
-  const [zipExporting, setZipExporting] = useState(false);
-  const handleExportZip = useCallback(async () => {
-    if (!onExportZip || selectedIds.size === 0 || zipExporting) return;
-    setZipExporting(true);
-    try {
-      await onExportZip(Array.from(selectedIds));
-    } finally {
-      setZipExporting(false);
-    }
-  }, [onExportZip, selectedIds, zipExporting]);
-
-  const handleBulkAddToPlaylist = useCallback(() => {
-    if (!onAddToPlaylist || selectedIds.size === 0) return;
-    for (const s of filteredSongs) if (selectedIds.has(s.id)) onAddToPlaylist(s);
-    exitSelectionMode();
-  }, [onAddToPlaylist, selectedIds, filteredSongs, exitSelectionMode]);
+  const compareSelected = useCallback(() => {
+    if (!onCompare || selection.selectedIds.size < 2) return;
+    onCompare(Array.from(selection.selectedIds));
+    selection.exitSelectionMode();
+  }, [onCompare, selection]);
 
   if (songs.length === 0) {
     return (
@@ -450,9 +160,6 @@ export const SongList: React.FC<SongListProps> = ({
       </div>
     );
   }
-
-  const allSelected = selectedIds.size === filteredSongs.length && filteredSongs.length > 0;
-  const someSelected = selectedIds.size > 0 && !allSelected;
 
   return (
     <div className="p-4">
@@ -493,9 +200,9 @@ export const SongList: React.FC<SongListProps> = ({
             ))}
           </div>
 
-          {!selectionMode ? (
+          {!selection.selectionMode ? (
             <button
-              onClick={() => setSelectionMode(true)}
+              onClick={selection.enterSelectionMode}
               className="text-xs text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 px-2 py-1 rounded-lg hover:bg-white/5 transition-colors"
               title={t('library.selectTracks')}
             >
@@ -503,7 +210,7 @@ export const SongList: React.FC<SongListProps> = ({
             </button>
           ) : (
             <button
-              onClick={exitSelectionMode}
+              onClick={selection.exitSelectionMode}
               className="text-xs text-zinc-600 dark:text-zinc-400 hover:text-white px-2 py-1 rounded-lg hover:bg-white/5 transition-colors"
             >
               <X size={14} />
@@ -514,175 +221,43 @@ export const SongList: React.FC<SongListProps> = ({
 
       {/* Source Filter Tabs — only on Library page */}
       {showFilters && (
-        <div className="flex items-center gap-1.5 mb-4 overflow-x-auto scrollbar-hide">
-          {SOURCE_FILTERS.map(f => {
-            const isActive = sourceFilter === f.id;
-            const count = sourceCounts[f.id] || 0;
-            return (
-              <button
-                key={f.id}
-                onClick={() => { setSourceFilter(f.id); exitSelectionMode(); }}
-                className={`
-                  flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold
-                  border transition-all duration-200 whitespace-nowrap
-                  ${isActive
-                    ? f.color
-                    : 'text-zinc-500 bg-transparent border-transparent hover:text-zinc-700 dark:hover:text-zinc-300 hover:bg-white/5'
-                  }
-                `}
-              >
-                {f.label}
-                {count > 0 && (
-                  <span className={`
-                    min-w-[18px] h-4 px-1 rounded-full text-[10px] font-bold
-                    flex items-center justify-center
-                    ${isActive ? 'bg-white/15' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500'}
-                  `}>
-                    {count}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
+        <SourceFilterTabs
+          active={sourceFilter}
+          counts={sourceCounts}
+          onPick={(id) => {
+            if (id !== sourceFilter) resetPage();
+            setSourceFilter(id);
+            selection.exitSelectionMode();
+          }}
+        />
       )}
 
       {/* Bulk Action Bar */}
-      {selectionMode && (
-        <div className="flex items-center gap-2 mb-3 px-3 py-2.5 rounded-xl bg-zinc-100/80 dark:bg-zinc-800/80 border border-zinc-200 dark:border-white/5">
-          <button
-            onClick={allSelected ? deselectAll : selectAll}
-            className="p-1 rounded text-zinc-600 dark:text-zinc-400 hover:text-white transition-colors"
-            title={allSelected ? t('library.deselectAll') : t('library.selectAll')}
-          >
-            {allSelected
-              ? <CheckSquare size={18} className="text-pink-400" />
-              : someSelected
-                ? <MinusSquare size={18} className="text-pink-400" />
-                : <Square size={18} />
-            }
-          </button>
-
-          <span className="text-xs text-zinc-600 dark:text-zinc-400 font-medium flex-1">
-            {selectedIds.size === 0
-              ? t('library.selectTracks')
-              : t('library.selected', { count: selectedIds.size })
-            }
-          </span>
-
-          {!allSelected && filteredSongs.length > 0 && (
-            <button
-              onClick={selectAll}
-              className="px-2 py-1 rounded-lg text-xs text-zinc-600 dark:text-zinc-300 hover:bg-white/10 transition-colors"
-            >
-              {t('library.selectAllVisible', 'Select all visible')}
-            </button>
-          )}
-          {selectedIds.size > 0 && (
-            <button
-              onClick={deselectAll}
-              className="px-2 py-1 rounded-lg text-xs text-zinc-600 dark:text-zinc-300 hover:bg-white/10 transition-colors"
-            >
-              {t('library.clearSelection', 'Clear')}
-            </button>
-          )}
-
-          {selectedIds.size > 0 && (
-            <>
-              {onCompare && selectedIds.size >= 2 && (
-                <button
-                  onClick={() => { onCompare(Array.from(selectedIds)); exitSelectionMode(); }}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-sky-500/10 border border-sky-500/20 text-sky-400 hover:bg-sky-500/20 hover:text-sky-300 text-xs font-semibold transition-all"
-                >
-                  <GitCompare size={13} /> {t('library.compareCount', 'Compare {{count}}', { count: selectedIds.size })}
-                </button>
-              )}
-              {onAddToPlaylist && (
-                <button
-                  onClick={handleBulkAddToPlaylist}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-pink-500/10 border border-pink-500/20 text-pink-400 hover:bg-pink-500/20 hover:text-pink-300 text-xs font-semibold transition-all"
-                >
-                  <ListPlus size={13} /> {t('library.addToPlaylistCount', 'Add {{count}} to playlist', { count: selectedIds.size })}
-                </button>
-              )}
-              {onExportZip && (
-                <button
-                  onClick={handleExportZip}
-                  disabled={zipExporting}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 hover:bg-amber-500/20 hover:text-amber-300 text-xs font-semibold transition-all disabled:opacity-40"
-                >
-                  {zipExporting
-                    ? <><Loader2 size={13} className="animate-spin" /> {t('library.exportZipBusy', 'Zipping…')}</>
-                    : <><FileArchive size={13} /> {t('library.exportZipCount', 'Zip {{count}}', { count: selectedIds.size })}</>}
-                </button>
-              )}
-              <button
-                onClick={handleBulkDownload}
-                disabled={bulkDownloading}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20 hover:text-emerald-300 text-xs font-semibold transition-all disabled:opacity-40"
-              >
-                {bulkDownloading
-                  ? <><Loader2 size={13} className="animate-spin" /> Downloading…</>
-                  : <><Download size={13} /> {t('library.downloadCount', { count: selectedIds.size })}</>}
-              </button>
-              <button
-                onClick={handleBulkDelete}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 hover:text-red-300 text-xs font-semibold transition-all"
-              >
-                <Trash2 size={13} />
-                {t('library.deleteCount', { count: selectedIds.size })}
-              </button>
-            </>
-          )}
-        </div>
+      {selection.selectionMode && (
+        <BulkActionBar
+          allSelected={selection.allSelected}
+          someSelected={selection.someSelected}
+          count={selection.count}
+          visibleCount={filteredSongs.length}
+          onToggleAll={selection.allSelected ? selection.deselectAll : selection.selectAll}
+          onSelectAll={selection.selectAll}
+          onDeselectAll={selection.deselectAll}
+          onCompare={onCompare && selection.count >= 2 ? compareSelected : undefined}
+          onAddToPlaylist={onAddToPlaylist ? bulk.addSelectedToPlaylist : undefined}
+          onZipExport={onExportZip ? bulk.exportZip : undefined}
+          onDownload={bulk.download}
+          onDelete={selection.bulkDelete}
+          downloading={bulk.downloading}
+          exporting={bulk.exporting}
+        />
       )}
 
       {/* A/B Comparison Bar */}
       {(abTrackAId || abTrackBId) && (
-        <div className="mb-3 px-4 py-3 rounded-xl bg-gradient-to-r from-blue-500/5 via-zinc-900/0 to-orange-500/5 border border-white/10 flex items-center gap-3">
-          <ArrowLeftRight size={16} className="text-pink-400 flex-shrink-0" />
-          <div className="flex items-center gap-2 flex-1 min-w-0">
-            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-              abTrackAId ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' : 'bg-zinc-800 text-zinc-500 border-white/5'
-            }`}>
-              A {abTrackAId && <span className="font-normal truncate max-w-[100px]">{abTrackATitle}</span>}
-            </span>
-            <span className="text-[10px] text-zinc-600">vs</span>
-            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-              abTrackBId ? 'bg-orange-500/10 text-orange-400 border-orange-500/20' : 'bg-zinc-800 text-zinc-500 border-white/5'
-            }`}>
-              B {abTrackBId && <span className="font-normal truncate max-w-[100px]">{abTrackBTitle}</span>}
-            </span>
-          </div>
-          <div className="flex items-center gap-1.5 flex-shrink-0">
-            {hasBothAB && (
-              <>
-                <button
-                  onClick={playAB}
-                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px] font-semibold bg-pink-500/10 text-pink-400 border border-pink-500/20 hover:bg-pink-500/20 transition-colors"
-                >
-                  <Play size={10} /> Play A/B
-                </button>
-                <button
-                  onClick={openABModal}
-                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[10px] font-semibold bg-violet-500/10 text-violet-400 border border-violet-500/20 hover:bg-violet-500/20 transition-colors"
-                >
-                  <ArrowLeftRight size={10} /> Compare
-                </button>
-              </>
-            )}
-            <button
-              onClick={clearAB}
-              className="p-1.5 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-red-500/10 transition-colors"
-              title="Clear A/B"
-            >
-              <X size={12} />
-            </button>
-          </div>
-        </div>
+        <ABCompareBar aId={abTrackAId} aTitle={abTrackATitle} bId={abTrackBId} bTitle={abTrackBTitle} />
       )}
 
-      {selectionMode && (
+      {selection.selectionMode && (
         <div className="-mt-2 mb-3 px-3 text-[11px] text-zinc-500">
           {t('library.rangeHint', 'Long-press another song to select the range (Shift+click on desktop)')}
         </div>
@@ -722,16 +297,7 @@ export const SongList: React.FC<SongListProps> = ({
         </div>
       )}
 
-      <div
-        ref={rowsRef}
-        onPointerDown={onRowsPointerDown}
-        onPointerMove={onRowsPointerMove}
-        onPointerUp={cancelPress}
-        onPointerCancel={cancelPress}
-        onClickCapture={onRowsClickCapture}
-        onMouseDown={onRowsMouseDown}
-        onContextMenu={e => { if (suppressClickRef.current || pressRef.current) e.preventDefault(); }}
-      >
+      <div ref={rowsRef} {...selection.rowHandlers}>
       {/* Grid View */}
       {activeViewMode === 'grid' && filteredSongs.length > 0 && (
         <div ref={gridRef} className="grid gap-3" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(min(${cardSize}px, 100%), 1fr))` }}>
@@ -741,9 +307,9 @@ export const SongList: React.FC<SongListProps> = ({
               song={song}
               isActive={currentSongId === song.id}
               isPlaying={currentSongId === song.id && isPlaying}
-              selectionMode={selectionMode}
-              isSelected={selectedIds.has(song.id)}
-              onToggleSelect={(e) => toggleSelection(song.id, e)}
+              selectionMode={selection.selectionMode}
+              isSelected={selection.selectedIds.has(song.id)}
+              onToggleSelect={(e) => selection.toggleSelection(song.id, e)}
               onPlay={() => onPlay(song)}
               onSelect={() => onSelect?.(song)}
               onShowDetails={onShowDetails ? () => onShowDetails(song) : undefined}
@@ -754,8 +320,6 @@ export const SongList: React.FC<SongListProps> = ({
               onAddToPlaylist={onAddToPlaylist ? () => onAddToPlaylist(song) : undefined}
               onSendToCover={onSendToCover ? () => onSendToCover(song) : undefined}
               onEditMetadata={onEditMetadata ? () => onEditMetadata(song) : undefined}
-              abTrackAId={abTrackAId}
-              abTrackBId={abTrackBId}
             />
           ))}
         </div>
@@ -770,9 +334,9 @@ export const SongList: React.FC<SongListProps> = ({
               song={song}
               isActive={currentSongId === song.id}
               isPlaying={currentSongId === song.id && isPlaying}
-              selectionMode={selectionMode}
-              isSelected={selectedIds.has(song.id)}
-              onToggleSelect={(e) => toggleSelection(song.id, e)}
+              selectionMode={selection.selectionMode}
+              isSelected={selection.selectedIds.has(song.id)}
+              onToggleSelect={(e) => selection.toggleSelection(song.id, e)}
               onPlay={() => onPlay(song)}
               onSelect={() => onSelect?.(song)}
               onShowDetails={onShowDetails ? () => onShowDetails(song) : undefined}
@@ -797,9 +361,9 @@ export const SongList: React.FC<SongListProps> = ({
           songs={pagedSongs}
           currentSongId={currentSongId}
           isPlaying={isPlaying}
-          selectionMode={selectionMode}
-          selectedIds={selectedIds}
-          onToggleSelect={toggleSelection}
+          selectionMode={selection.selectionMode}
+          selectedIds={selection.selectedIds}
+          onToggleSelect={selection.toggleSelection}
           onPlay={onPlay}
           onSelect={onSelect}
           onShowDetails={onShowDetails}
@@ -809,8 +373,6 @@ export const SongList: React.FC<SongListProps> = ({
           onRename={onRename}
           onSendToCover={onSendToCover}
           showSourceBadge={showFilters && sourceFilter === 'all'}
-          abTrackAId={abTrackAId}
-          abTrackBId={abTrackBId}
           topRight={<PaginationControls {...paginationProps} />}
         />
       )}
@@ -825,1110 +387,3 @@ export const SongList: React.FC<SongListProps> = ({
     </div>
   );
 };
-
-// ── Quality Score Badge ──────────────────────────────────────────────────────
-
-interface ParsedQuality {
-  score: number;
-  metallic: number;
-  wordCuts: number;
-  noise: number;
-}
-
-function parseQualityScores(raw?: string): { unmastered?: ParsedQuality; mastered?: ParsedQuality } | null {
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw);
-  } catch { return null; }
-}
-
-function qualityColor(score: number): string {
-  if (score >= 0.8) return 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20';
-  if (score >= 0.5) return 'text-amber-400 bg-amber-500/10 border-amber-500/20';
-  return 'text-red-400 bg-red-500/10 border-red-500/20';
-}
-
-const QualityBadge: React.FC<{ song: Song }> = ({ song }) => {
-  const { t } = useTranslation();
-  const scores = parseQualityScores(song.quality_scores);
-  // No hook may sit below this early return: a song that gains or loses
-  // quality data would change the component's hook count.
-  if (!scores) return null;
-
-  const metric = (label: string, value: number) => (
-    <span className="flex justify-between gap-4">
-      <span className="text-zinc-500">{label}</span>
-      <span className={qualityColor(value).split(' ')[0]}>{formatPercent(value)}</span>
-    </span>
-  );
-
-  const detail = (label: string, q: ParsedQuality) => (
-    <span className="mt-2 block first:mt-0">
-      <span className="mb-1 block text-[10px] font-bold text-zinc-700 dark:text-zinc-300">{label}</span>
-      <span className="block space-y-0.5">
-        {metric(t('library.quality.overall', 'Overall'), q.score)}
-        {metric(t('library.quality.metallic', 'Metallic'), q.metallic)}
-        {metric(t('library.quality.wordCuts', 'Word Cuts'), q.wordCuts)}
-        {metric(t('library.quality.noise', 'Noise'), q.noise)}
-      </span>
-    </span>
-  );
-
-  // A span, not a button: the badge has no action of its own, and the old
-  // badge let a click bubble to the song row to play/select it. A button here
-  // would both look actionable and swallow that click.
-  const badge = (q: ParsedQuality, label: string) => (
-    <span
-      tabIndex={0}
-      className={`text-[9px] font-bold px-1.5 py-0.5 rounded border cursor-help outline-none focus-visible:ring-2 focus-visible:ring-pink-400 ${qualityColor(q.score)}`}
-    >
-      {label}
-    </span>
-  );
-
-  const hasBoth = !!scores.unmastered && !!scores.mastered;
-  // One card for both scores, as the old tooltip did: raw and processed are
-  // judged against each other, so showing only the hovered badge's numbers
-  // loses the comparison that made the pair useful.
-  const info = (
-    <>
-      {scores.unmastered && detail(t('library.quality.unmastered', 'Unmastered'), scores.unmastered)}
-      {scores.mastered && detail(t('library.quality.mastered', 'Mastered'), scores.mastered)}
-    </>
-  );
-
-  return (
-    <ParamLabel label={t('library.quality.title', 'Quality scores')} info={info} rootClassName="inline-flex">
-      <span className="relative inline-flex items-center gap-1">
-        {scores.unmastered && badge(
-          scores.unmastered,
-          `${hasBoth ? `${t('library.quality.raw', 'Raw')}: ` : ''}${formatPercent(scores.unmastered.score)}`,
-        )}
-        {scores.mastered && badge(
-          scores.mastered,
-          `${hasBoth ? `${t('library.quality.pp', 'PP')}: ` : ''}${formatPercent(scores.mastered.score)}`,
-        )}
-      </span>
-    </ParamLabel>
-  );
-};
-
-interface SongItemProps {
-  song: Song;
-  isActive: boolean;
-  isPlaying: boolean;
-  selectionMode: boolean;
-  isSelected: boolean;
-  onToggleSelect: (e?: React.MouseEvent) => void;
-  onPlay: () => void;
-  onSelect?: () => void;
-  onShowDetails?: () => void;
-  onDelete: () => void;
-  onReuse?: () => void;
-  onDownload?: () => void;
-  onRename?: (newTitle: string) => void;
-  onAddToPlaylist?: () => void;
-  onSendToCover?: () => void;
-  onEditMetadata?: () => void;
-  showSourceBadge?: boolean;
-  abTrackAId?: string | null;
-  abTrackBId?: string | null;
-}
-
-/** The live-render treatment, for whichever view mode is on.
- *
- *  All THREE modes need it, and that is the whole reason this is a hook: the
- *  grid card got it first, the Generations list remembers its view mode in
- *  localStorage, and a user in list mode saw a plain row with no hint that the
- *  track was still being written. `frac` is AUDIO RECEIVED over the resolved
- *  duration — what the play button can actually reach — not the engine's stage
- *  percentage, which runs ahead of it. */
-function useStreamingSong(song: Song): { isStreaming: boolean; frac: number; audible: boolean } {
-  // Subscribed for the re-render; the numbers come from THIS take.
-  const stream = useMm3StreamAudio();
-  const take = song.streamTake ?? 0;
-  const isStreaming = !!song.streamJobId && stream.jobId === song.streamJobId;
-  // PER TAKE, because every card of an ensemble shares one jobId — reading the
-  // store's top-level state would paint all of them with the progress of
-  // whichever take happens to be audible.
-  const st = isStreaming && song.streamJobId
-    ? mm3StreamTakeState(song.streamJobId, take)
-    : null;
-  const received = st ? st.received : stream.received;
-  const expected = st ? st.expected : stream.expected;
-  const frac = isStreaming && expected > 0
-    ? clamp01(received / expected)
-    : 0;
-  // Is this the take coming out of the speakers? Several are growing at once
-  // and only one is audible, so a card has to say which — otherwise the first
-  // thing you hear belongs to a track you cannot identify.
-  const audible = isStreaming && stream.take === take;
-  return { isStreaming, frac, audible };
-}
-
-const SongItem: React.FC<SongItemProps> = ({
-  song, isActive, isPlaying, selectionMode, isSelected, onToggleSelect,
-  onPlay, onSelect, onShowDetails, onDelete, onReuse, onDownload, onRename, onAddToPlaylist, onSendToCover, onEditMetadata, showSourceBadge,
-  abTrackAId, abTrackBId,
-}) => {
-  const { isStreaming, frac: streamFrac, audible: streamAudible } = useStreamingSong(song);
-  const { t } = useTranslation();
-  const [editing, setEditing] = React.useState(false);
-  const [editTitle, setEditTitle] = React.useState(song.title || '');
-  const inputRef = React.useRef<HTMLInputElement>(null);
-  const { isDisguised, disguiseTitle } = useDisguiseMode();
-
-  React.useEffect(() => {
-    if (editing && inputRef.current) {
-      inputRef.current.focus();
-      inputRef.current.select();
-    }
-  }, [editing]);
-
-  const commitRename = () => {
-    const trimmed = editTitle.trim();
-    if (trimmed && trimmed !== (song.title || '')) {
-      onRename?.(trimmed);
-    }
-    setEditing(false);
-  };
-
-  const formatDuration = (val: string | number | undefined) => {
-    if (!val) return '--:--';
-    return typeof val === 'string' ? val : formatClock(val);
-  };
-
-  const { bpm, keyScale } = trackMetadata(song);
-
-  const handleClick = (e: React.MouseEvent) => {
-    if (selectionMode) {
-      onToggleSelect(e);
-    } else {
-      onSelect?.();
-    }
-  };
-
-  return (
-    <div
-      className={`
-        group relative flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer transition-all duration-200
-        ${isStreaming
-          ? 'bg-orange-500/10 border border-orange-500/50 mm3-stream-glow'
-          : isSelected && selectionMode
-          ? 'bg-pink-500/10 border border-pink-500/20'
-          : isActive
-            ? 'bg-pink-500/10 border border-pink-500/20'
-            : 'hover:bg-white/5 border border-transparent'
-        }
-        ${song.id === abTrackAId ? 'border-l-2 !border-l-blue-500' : song.id === abTrackBId ? 'border-l-2 !border-l-orange-500' : ''}
-      `}
-      data-sel-id={song.id}
-      onClick={handleClick}
-    >
-      {/* Selection Checkbox */}
-      {selectionMode && (
-        <div className="flex-shrink-0">
-          {isSelected
-            ? <CheckSquare size={18} className="text-pink-400" />
-            : <Square size={18} className="text-zinc-600" />
-          }
-        </div>
-      )}
-
-      {/* Cover Art Thumbnail */}
-      <div className="relative w-11 h-11 rounded-lg bg-zinc-100 dark:bg-zinc-800 flex-shrink-0 flex items-center justify-center overflow-hidden">
-        <CoverImage url={song.coverUrl} seed={song.id} iconSize={18} />
-        {/* Play overlay on hover (not in selection mode) */}
-        {!selectionMode && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              if (isActive) {
-                // Toggle play/pause via playback store — don't reload the track
-                togglePlay();
-              } else {
-                onPlay();
-              }
-            }}
-            className="absolute inset-0 flex items-center justify-center bg-black/30 dark:bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity"
-          >
-            {isPlaying ? <Pause size={16} className="text-white" /> : <Play size={16} className="text-white ml-0.5" />}
-          </button>
-        )}
-      </div>
-
-      {/* Song Info */}
-      <div className="flex-1 min-w-0">
-        {editing ? (
-          <input
-            ref={inputRef}
-            className="w-full text-sm font-medium bg-zinc-100 dark:bg-zinc-800 border border-pink-500/40 rounded-lg px-2 py-0.5 text-zinc-800 dark:text-zinc-200 outline-none focus:border-pink-500"
-            value={editTitle}
-            onChange={e => setEditTitle(e.target.value)}
-            onBlur={commitRename}
-            onKeyDown={e => {
-              if (e.key === 'Enter') commitRename();
-              if (e.key === 'Escape') { setEditTitle(song.title || ''); setEditing(false); }
-            }}
-            onClick={e => e.stopPropagation()}
-          />
-        ) : (
-          <div className="flex items-center gap-1 group/title">
-            <div className={`text-sm font-medium truncate ${
-              isStreaming ? 'text-orange-400' : isActive ? 'text-pink-400' : 'text-zinc-800 dark:text-zinc-200'
-            }`}>
-              {disguiseTitle(displayTitle(song))}
-            </div>
-            {/* The row equivalent of the grid card's badge + bar: the track is
-                playable, and this is how much of it exists so far. */}
-            {isStreaming && (
-              <span className={`flex-shrink-0 flex items-center gap-1 px-1.5 py-0.5 rounded
-                               text-[9px] font-bold uppercase tracking-wide text-white
-                               ${streamAudible ? 'bg-pink-500/90' : 'bg-orange-500/90'}`}
-                    title={streamAudible ? 'This is the take you are hearing' : 'Rendering — click to listen to this one'}>
-                <Radio size={8} className="animate-pulse" />
-                {formatPercent(streamFrac)}
-              </span>
-            )}
-            {onRename && !selectionMode && (
-              <button
-                onClick={e => { e.stopPropagation(); setEditTitle(song.title || ''); setEditing(true); }}
-                className="flex-shrink-0 p-0.5 rounded text-zinc-600 hover:text-zinc-700 dark:hover:text-zinc-300 opacity-0 group-hover/title:opacity-100 transition-opacity"
-                title={t('library.rename')}
-              >
-                <Pencil size={11} />
-              </button>
-            )}
-          </div>
-        )}
-        {isStreaming && (
-          <div className="mt-1 mb-0.5 h-0.5 rounded-full bg-black/30 overflow-hidden">
-            <div
-              className="h-full bg-gradient-to-r from-orange-500 to-amber-400 transition-[width] duration-300"
-              style={{ width: `${streamFrac * 100}%` }}
-            />
-          </div>
-        )}
-        <div className="text-xs text-zinc-500 truncate mt-0.5">
-          {isDisguised ? '' : (displaySubtext(song) || t('library.noDescription'))}
-        </div>
-        <SongParameterBadges song={song} />
-      </div>
-
-      {/* Metadata Badges */}
-      <div className="hidden xl:flex items-center gap-2 flex-shrink-0">
-        {showSourceBadge && (() => {
-          const src = getSongSource(song);
-          const cfg = SOURCE_FILTERS.find(f => f.id === src);
-          if (!cfg || src === 'create') return null;
-          return (
-            <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full border ${cfg.color}`}>
-              {cfg.label}
-            </span>
-          );
-        })()}
-        {bpm > 0 && (
-          <span className="text-[10px] text-zinc-500 font-medium px-1.5 py-0.5 rounded bg-zinc-100/50 dark:bg-zinc-800/50">
-            {bpm} BPM
-          </span>
-        )}
-        {keyScale && (
-          <span className="text-[10px] text-zinc-500 font-medium px-1.5 py-0.5 rounded bg-zinc-100/50 dark:bg-zinc-800/50">
-            {keyScale}
-          </span>
-        )}
-        <QualityBadge song={song} />
-      </div>
-
-      {/* Duration */}
-      <span className="text-xs text-zinc-500 font-mono flex-shrink-0 w-12 text-right">
-        {formatDuration(song.duration)}
-      </span>
-
-      {/* Actions (hidden in selection mode) */}
-      {!selectionMode && (
-        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 relative">
-          {onShowDetails && (
-            <DetailsButton onClick={onShowDetails} size={15}
-              className="p-1.5 rounded-lg text-zinc-600 dark:text-zinc-400 hover:text-pink-400 hover:bg-white/10 transition-colors" />
-          )}
-          {onAddToPlaylist && (
-            <button
-              onClick={(e) => { e.stopPropagation(); onAddToPlaylist(); }}
-              className="p-1.5 rounded-lg text-zinc-600 dark:text-zinc-400 hover:text-pink-400 hover:bg-white/10 transition-colors"
-              title={t('library.addToPlaylist')}
-            >
-              <ListPlus size={15} />
-            </button>
-          )}
-          <SongActionsMenu
-            song={song}
-            onReuse={onReuse}
-            onDownload={onDownload}
-            onSendToCover={onSendToCover}
-            onEditMetadata={onEditMetadata}
-            onDelete={onDelete}
-          />
-        </div>
-      )}
-    </div>
-  );
-};
-
-// ── SongCard — Grid view card ────────────────────────────────────────────────
-
-interface SongCardProps {
-  song: Song;
-  isActive: boolean;
-  isPlaying: boolean;
-  selectionMode: boolean;
-  isSelected: boolean;
-  onToggleSelect: (e?: React.MouseEvent) => void;
-  onPlay: () => void;
-  onSelect?: () => void;
-  onShowDetails?: () => void;
-  onDelete: () => void;
-  onReuse?: () => void;
-  onDownload?: () => void;
-  onRename?: (newTitle: string) => void;
-  onAddToPlaylist?: () => void;
-  onSendToCover?: () => void;
-  onEditMetadata?: () => void;
-  abTrackAId?: string | null;
-  abTrackBId?: string | null;
-}
-
-/** The i button on a track: opens the Song Details panel. Playing or
- *  clicking a track no longer does. */
-const DetailsButton: React.FC<{ onClick: () => void; size: number; className: string }> = ({ onClick, size, className }) => {
-  const { t } = useTranslation();
-  return (
-    <button
-      onClick={(e) => { e.stopPropagation(); onClick(); }}
-      className={className}
-      title={t('library.songDetails', 'Song details')}
-      aria-label={t('library.songDetails', 'Song details')}
-    >
-      <Info size={size} />
-    </button>
-  );
-};
-
-const SongCard: React.FC<SongCardProps> = ({
-  song, isActive, isPlaying, selectionMode, isSelected, onToggleSelect,
-  onPlay, onSelect, onShowDetails, onDelete, onReuse, onDownload, onRename, onAddToPlaylist, onSendToCover, onEditMetadata,
-  abTrackAId: _abTrackAId, abTrackBId: _abTrackBId,
-}) => {
-  const { t } = useTranslation();
-  const [editing, setEditing] = React.useState(false);
-  const [editTitle, setEditTitle] = React.useState(song.title || '');
-  const renameInputRef = React.useRef<HTMLInputElement>(null);
-  const { isDisguised, disguiseTitle } = useDisguiseMode();
-
-  // A streaming card is a real, playable track whose file does not exist yet.
-  const { isStreaming, frac: streamFrac, audible: streamAudible } = useStreamingSong(song);
-
-  React.useEffect(() => {
-    if (editing && renameInputRef.current) {
-      renameInputRef.current.focus();
-      renameInputRef.current.select();
-    }
-  }, [editing]);
-
-  const commitRename = () => {
-    const trimmed = editTitle.trim();
-    if (trimmed && trimmed !== (song.title || '')) {
-      onRename?.(trimmed);
-    }
-    setEditing(false);
-  };
-
-  const formatDuration = (val: string | number | undefined) => {
-    if (!val) return '--:--';
-    return typeof val === 'string' ? val : formatClock(val);
-  };
-
-  const handleClick = (e: React.MouseEvent) => {
-    if (selectionMode) onToggleSelect(e);
-    else onSelect?.();
-  };
-
-  return (
-    <div
-      className={`
-        group relative rounded-2xl border p-2 cursor-pointer flex flex-col
-        transition-all duration-200 hover:shadow-lg hover:shadow-black/30
-        ${isStreaming
-          ? 'border-orange-500/60 mm3-stream-glow'
-          : isSelected && selectionMode
-          ? 'border-pink-500/40 bg-pink-500/5 ring-1 ring-pink-500/20'
-          : isActive
-            ? 'border-pink-500/30 bg-pink-500/[0.06]'
-            : 'border-zinc-200 dark:border-white/[0.06] bg-zinc-50/80 dark:bg-zinc-900/60 hover:border-zinc-300 dark:hover:border-white/10 hover:bg-zinc-100/60 dark:hover:bg-zinc-800/60'
-        }
-      `}
-      data-sel-id={song.id}
-      // Named so the card-size slider's view transition can move and resize it.
-      style={{ viewTransitionName: `song-card-${song.id.replace(/[^a-zA-Z0-9_-]/g, '_')}` }}
-      onClick={handleClick}
-    >
-      {/* ── Artwork ── inset with its own radius, so the card reads as a card
-          rather than as a photo with text printed over it. */}
-      <div className="relative aspect-square rounded-xl overflow-hidden bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center">
-        <CoverImage url={song.coverUrl || song.cover_url} seed={song.id} iconSize={32} />
-
-        {/* Play button — always on show, per the card design. Hover only grows it. */}
-        {!selectionMode && (
-          <button
-            onClick={(e) => { e.stopPropagation(); if (isActive) togglePlay(); else onPlay(); }}
-            className="absolute left-2.5 bottom-2.5 z-10 w-10 h-10 rounded-full
-                       bg-black/45 backdrop-blur-sm border border-white/20
-                       flex items-center justify-center text-white
-                       transition-transform duration-200 hover:scale-110 hover:bg-black/60"
-            title={isPlaying ? 'Pause' : 'Play'}
-          >
-            {isPlaying
-              ? <Pause size={17} />
-              : <Play size={17} className="ml-0.5" />
-            }
-          </button>
-        )}
-
-        {/* Selection checkbox */}
-        {selectionMode && (
-          <div className="absolute top-2 left-2 z-20">
-            {isSelected
-              ? <CheckSquare size={20} className="text-pink-400 drop-shadow" />
-              : <Square size={20} className="text-white/60 drop-shadow" />
-            }
-          </div>
-        )}
-
-        {/* Quick delete, same action as the menu's Delete. Shown on hover (always
-            on touch screens); hidden where the menu is, so it never sits under
-            the streaming badge or deletes a file that does not exist yet. */}
-        {!selectionMode && !isStreaming && (
-          <button
-            onClick={(e) => { e.stopPropagation(); onDelete(); }}
-            className="absolute top-2 right-2 z-10 w-6 h-6 rounded-full
-                       bg-black/45 backdrop-blur-sm border border-white/20
-                       flex items-center justify-center text-white
-                       opacity-0 group-hover:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100
-                       transition-opacity hover:bg-red-500/80"
-            title={t('library.delete', 'Delete')}
-            aria-label={t('library.delete', 'Delete')}
-          >
-            <X size={13} />
-          </button>
-        )}
-
-        {/* Duration badge */}
-        <div className="absolute top-2 left-2 z-10 px-1.5 py-0.5 rounded-md bg-black/50 backdrop-blur-sm text-[10px] font-mono text-white/85"
-          style={selectionMode ? { left: '2rem' } : undefined}
-        >
-          {formatDuration(song.duration)}
-        </div>
-
-        {/* Live-render treatment: the orange ring above says "not finished", this
-            says how far along and how much is listenable. Progress is measured in
-            AUDIO RECEIVED, which is the part the play button can actually reach —
-            the engine's stage percentage would run ahead of it and promise audio
-            that is not there yet. */}
-        {isStreaming && (
-          <>
-            {/* Several takes stream at once and only one is audible. The badge says
-                which, because otherwise the audio that starts by itself belongs to
-                a card you cannot pick out. */}
-            <div className={`absolute top-2 right-2 z-20 flex items-center gap-1 px-1.5 py-0.5 rounded-md
-                            text-[9px] font-bold uppercase tracking-wide text-white shadow
-                            ${streamAudible ? 'bg-pink-500/90' : 'bg-orange-500/90'}`}>
-              <Radio size={9} className="animate-pulse" />
-              {streamAudible ? 'Listening' : 'Generating'}
-            </div>
-            <div className="absolute inset-x-0 bottom-0 z-20">
-              <div className="px-2 pb-1 text-[9px] font-medium text-orange-200 drop-shadow
-                              flex items-center justify-between tabular-nums">
-                <span>{streamAudible ? 'playing as it renders' : 'generation in progress'}</span>
-                <span>{formatPercent(streamFrac)}</span>
-              </div>
-              <div className="h-1 bg-black/50">
-                <div
-                  className="h-full bg-gradient-to-r from-orange-500 to-amber-400 transition-[width] duration-300"
-                  style={{ width: `${streamFrac * 100}%` }}
-                />
-              </div>
-            </div>
-          </>
-        )}
-      </div>
-
-      {/* ── Text ── */}
-      <div className="px-1 pt-2.5 pb-0.5 flex flex-col gap-1">
-        {/* Title — editable */}
-        {editing ? (
-          <input
-            ref={renameInputRef}
-            className="w-full text-sm font-semibold bg-black/30 border border-pink-500/40 rounded-lg px-2 py-0.5 text-zinc-900 dark:text-white outline-none focus:border-pink-500"
-            value={editTitle}
-            onChange={e => setEditTitle(e.target.value)}
-            onBlur={commitRename}
-            onKeyDown={e => {
-              if (e.key === 'Enter') commitRename();
-              if (e.key === 'Escape') { setEditTitle(song.title || ''); setEditing(false); }
-            }}
-            onClick={e => e.stopPropagation()}
-          />
-        ) : (
-          <div className="flex items-center gap-1 group/title">
-            <div className={`text-sm font-semibold truncate ${isActive ? 'text-pink-400' : 'text-zinc-900 dark:text-white'}`}>
-              {disguiseTitle(displayTitle(song))}
-            </div>
-            {onRename && !selectionMode && (
-              <button
-                onClick={e => { e.stopPropagation(); setEditTitle(song.title || ''); setEditing(true); }}
-                className="flex-shrink-0 p-0.5 rounded text-zinc-400 dark:text-white/40 hover:text-zinc-700 dark:hover:text-white opacity-0 group-hover/title:opacity-100 transition-opacity"
-                title={t('library.rename')}
-              >
-                <Pencil size={11} />
-              </button>
-            )}
-          </div>
-        )}
-
-        <SongParameterBadges song={song} />
-        {/* Subject, or the caption when there is no subject */}
-        <div className="text-[11px] text-zinc-600 dark:text-white/55 leading-snug line-clamp-2 min-h-[2rem] [overflow-wrap:anywhere]">
-          {isDisguised ? '' : (displaySubtext(song) || t('library.noDescription'))}
-        </div>
-
-        {/* Footer — age on the left, the song menu on the right */}
-        <div className="flex items-center justify-between gap-2 pt-0.5">
-          <div className="flex items-center gap-2 min-w-0">
-            <QualityBadge song={song} />
-            <span className="text-[10px] text-zinc-500 dark:text-white/40 truncate">
-              {formatRelativeDay(song.created_at || song.createdAt)}
-            </span>
-          </div>
-
-          {!selectionMode && !isStreaming && onShowDetails && (
-            <DetailsButton onClick={onShowDetails} size={14}
-              className="ml-auto w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0
-                         text-zinc-400 dark:text-white/40 hover:text-zinc-800 dark:hover:text-white
-                         hover:bg-zinc-200/70 dark:hover:bg-white/10" />
-          )}
-          {/* Hidden on a live render: every item on it (download, delete,
-              send-to-cover, export) needs a file that does not exist yet. */}
-          {!selectionMode && !isStreaming && (
-            <SongActionsMenu
-              song={song}
-              size={14}
-              className="w-6 h-6 !p-0 rounded-full flex items-center justify-center flex-shrink-0
-                         text-zinc-400 dark:text-white/40 hover:text-zinc-800 dark:hover:text-white
-                         hover:bg-zinc-200/70 dark:hover:bg-white/10"
-              onReuse={onReuse}
-              onAddToPlaylist={onAddToPlaylist}
-              onDownload={onDownload}
-              onSendToCover={onSendToCover}
-              onEditMetadata={onEditMetadata}
-              onDelete={onDelete}
-            />
-          )}
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// ── TableTitleCell — Inline-editable title for table rows ─────────────────────
-
-const TableTitleCell: React.FC<{
-  song: Song;
-  isActive: boolean;
-  onRename?: (newTitle: string) => void;
-  disguiseTitle: (t: string) => string;
-}> = ({ song, isActive, onRename, disguiseTitle }) => {
-  const { t } = useTranslation();
-  const { isStreaming, frac } = useStreamingSong(song);
-  const [editing, setEditing] = React.useState(false);
-  const [editTitle, setEditTitle] = React.useState(song.title || '');
-  const inputRef = React.useRef<HTMLInputElement>(null);
-
-  React.useEffect(() => {
-    if (editing && inputRef.current) {
-      inputRef.current.focus();
-      inputRef.current.select();
-    }
-  }, [editing]);
-
-  const commitRename = () => {
-    const trimmed = editTitle.trim();
-    if (trimmed && trimmed !== (song.title || '')) {
-      onRename?.(trimmed);
-    }
-    setEditing(false);
-  };
-
-  if (editing) {
-    return (
-      <input
-        ref={inputRef}
-        className="w-full text-xs font-medium bg-zinc-800 border border-pink-500/40 rounded px-1.5 py-0.5 text-zinc-200 outline-none focus:border-pink-500"
-        value={editTitle}
-        onChange={e => setEditTitle(e.target.value)}
-        onBlur={commitRename}
-        onKeyDown={e => {
-          if (e.key === 'Enter') commitRename();
-          if (e.key === 'Escape') { setEditTitle(song.title || ''); setEditing(false); }
-        }}
-        onClick={e => e.stopPropagation()}
-      />
-    );
-  }
-
-  return (
-    <span className="flex items-center gap-1 group/title min-w-0">
-      <span className={`font-medium truncate ${
-        isStreaming ? 'text-orange-400' : isActive ? 'text-pink-400' : 'text-zinc-200'
-      }`}>
-        {disguiseTitle(displayTitle(song))}
-      </span>
-      {/* Third view mode, same treatment. A row that reads as an ordinary track
-          while its audio is still being written is the bug this exists to stop. */}
-      {isStreaming && (
-        <span className="flex-shrink-0 flex items-center gap-1 px-1 rounded bg-orange-500/90
-                         text-[9px] font-bold uppercase tracking-wide text-white">
-          <Radio size={8} className="animate-pulse" />
-          {formatPercent(frac)}
-        </span>
-      )}
-      {onRename && (
-        <button
-          onClick={e => { e.stopPropagation(); setEditTitle(song.title || ''); setEditing(true); }}
-          className="flex-shrink-0 p-0.5 rounded text-zinc-600 hover:text-zinc-300 opacity-0 group-hover/title:opacity-100 transition-opacity"
-          title={t('library.rename')}
-        >
-          <Pencil size={10} />
-        </button>
-      )}
-    </span>
-  );
-};
-
-// ── Style cell — truncated, with a hover tooltip showing the full text + copy ──
-const TableStyleCell: React.FC<{ text: string }> = ({ text }) => (
-  <HoverFullText text={text} className="text-zinc-500 truncate block" />
-);
-
-// ── SongTable — Table view with resizable columns ────────────────────────────
-
-interface SongTableProps {
-  songs: Song[];
-  currentSongId?: string;
-  isPlaying: boolean;
-  selectionMode: boolean;
-  selectedIds: Set<string>;
-  onToggleSelect: (id: string, e?: React.MouseEvent) => void;
-  onPlay: (song: Song) => void;
-  onSelect?: (song: Song) => void;
-  /** The i button: open the Song Details panel for this track. */
-  onShowDetails?: (song: Song) => void;
-  onDelete: (song: Song) => void;
-  onReuse?: (song: Song) => void;
-  onDownload?: (song: Song) => void;
-  onRename?: (song: Song, newTitle: string) => void;
-  onSendToCover?: (song: Song) => void;
-  showSourceBadge?: boolean;
-  abTrackAId?: string | null;
-  abTrackBId?: string | null;
-  /** Rendered on the right of the Columns toolbar row (e.g. pagination). */
-  topRight?: React.ReactNode;
-}
-
-const SOURCE_BADGE_MAP: Record<string, { label: string; cls: string }> = {
-  'insta-gen': { label: 'Auto-Gen', cls: 'text-fuchsia-300 bg-fuchsia-500/15 border-fuchsia-500/25' },
-  'lyric-studio': { label: 'Lyric', cls: 'text-pink-300 bg-pink-500/15 border-pink-500/25' },
-  'cover-studio': { label: 'Cover', cls: 'text-cyan-300 bg-cyan-500/15 border-cyan-500/25' },
-  'repaint': { label: 'Repaint', cls: 'text-amber-300 bg-amber-500/15 border-amber-500/25' },
-  'stem-builder': { label: 'Stem', cls: 'text-emerald-300 bg-emerald-500/15 border-emerald-500/25' },
-  'builder': { label: 'Builder', cls: 'text-indigo-300 bg-indigo-500/15 border-indigo-500/25' },
-};
-
-// Column definitions — id, label, default width, min width, alignment.
-// defaultHidden = not shown until the user enables it via the Columns menu.
-type ColAlign = 'left' | 'center' | 'right';
-interface ColDef { id: string; label: string; defaultW: number; minW: number; align: ColAlign; resizable: boolean; defaultHidden?: boolean }
-
-const BASE_COLS: ColDef[] = [
-  { id: 'thumb',   label: '',        defaultW: 48,  minW: 48,  align: 'left', resizable: false },
-  { id: 'title',   label: 'Title',   defaultW: 320, minW: 80,  align: 'left', resizable: true },
-  { id: 'style',   label: 'Style',   defaultW: 320, minW: 80,  align: 'left', resizable: true },
-  { id: 'bpm',     label: 'BPM',     defaultW: 60,  minW: 40,  align: 'left', resizable: true },
-  { id: 'key',     label: 'Key',     defaultW: 60,  minW: 40,  align: 'left', resizable: true },
-  { id: 'model',   label: 'Model',   defaultW: 110, minW: 60,  align: 'left', resizable: true },
-  { id: 'quality', label: 'Quality', defaultW: 70,  minW: 50,  align: 'left', resizable: true },
-  { id: 'time',    label: 'Time',    defaultW: 56,  minW: 44,  align: 'left', resizable: true },
-  { id: 'date',    label: 'Date',    defaultW: 80,  minW: 50,  align: 'left', resizable: true },
-  // ── Generation data (hidden by default; enable via Columns menu) ──
-  { id: 'seed',      label: 'Seed',      defaultW: 96,  minW: 60, align: 'left', resizable: true, defaultHidden: true },
-  { id: 'lmSeed',    label: 'LM Seed',   defaultW: 96,  minW: 60, align: 'left', resizable: true, defaultHidden: true },
-  { id: 'steps',     label: 'Steps',     defaultW: 56,  minW: 44, align: 'left', resizable: true, defaultHidden: true },
-  { id: 'cfg',       label: 'CFG',       defaultW: 56,  minW: 44, align: 'left', resizable: true, defaultHidden: true },
-  { id: 'shift',     label: 'Shift',     defaultW: 56,  minW: 44, align: 'left', resizable: true, defaultHidden: true },
-  { id: 'solver',    label: 'Solver',    defaultW: 110, minW: 60, align: 'left', resizable: true, defaultHidden: true },
-  { id: 'scheduler', label: 'Scheduler', defaultW: 110, minW: 60, align: 'left', resizable: true, defaultHidden: true },
-  { id: 'guidanceMode', label: 'Guidance', defaultW: 100, minW: 60, align: 'left', resizable: true, defaultHidden: true },
-  { id: 'lora',      label: 'LoRA',      defaultW: 130, minW: 60, align: 'left', resizable: true, defaultHidden: true },
-  { id: 'loraScale', label: 'LoRA Scale', defaultW: 80, minW: 50, align: 'left', resizable: true, defaultHidden: true },
-  { id: 'lm',        label: 'LM Model',  defaultW: 120, minW: 60, align: 'left', resizable: true, defaultHidden: true },
-  { id: 'vae',       label: 'VAE',       defaultW: 110, minW: 60, align: 'left', resizable: true, defaultHidden: true },
-  { id: 'timesig',   label: 'Time Sig',  defaultW: 68,  minW: 48, align: 'left', resizable: true, defaultHidden: true },
-  { id: 'lang',      label: 'Lang',      defaultW: 60,  minW: 44, align: 'left', resizable: true, defaultHidden: true },
-  { id: 'task',      label: 'Task',      defaultW: 100, minW: 60, align: 'left', resizable: true, defaultHidden: true },
-  { id: 'instrumental', label: 'Instr.', defaultW: 60, minW: 48, align: 'center', resizable: true, defaultHidden: true },
-  { id: 'mastered',  label: 'Mastered',  defaultW: 76,  minW: 56, align: 'center', resizable: true, defaultHidden: true },
-  { id: 'seedType',  label: 'Seed Type', defaultW: 80,  minW: 56, align: 'left', resizable: true, defaultHidden: true },
-  { id: 'lmSeedType', label: 'LM Seed Type', defaultW: 90, minW: 60, align: 'left', resizable: true, defaultHidden: true },
-  // Holds up to 5 action buttons (edit/download/delete/A/B). Must be wide
-  // enough that the fixed-layout <td overflow-hidden> never clips them — the
-  // column is non-resizable so the user can't widen it manually (#58).
-  { id: 'actions', label: 'Actions', defaultW: 158, minW: 158, align: 'right', resizable: false },
-];
-
-const SOURCE_COL: ColDef = { id: 'source', label: 'Source', defaultW: 80, minW: 50, align: 'left', resizable: true };
-const SELECT_COL: ColDef = { id: 'select', label: '', defaultW: 32, minW: 32, align: 'left', resizable: false };
-// Flexible spacer inserted before the actions column. It carries no width of
-// its own and absorbs all leftover table width, which pins `actions` to the
-// right edge while the resizable middle columns share the space between (#58).
-const SPACER_COL: ColDef = { id: 'spacer', label: '', defaultW: 0, minW: 0, align: 'left', resizable: false };
-
-const STORAGE_KEY = 'hs-table-colWidths';
-
-function loadColWidths(): Record<string, number> {
-  try { const v = localStorage.getItem(STORAGE_KEY); return v ? JSON.parse(v) : {}; } catch { return {}; }
-}
-
-function saveColWidths(w: Record<string, number>) {
-  try { writeJson(STORAGE_KEY, w); } catch { /* ignore */ }
-}
-
-// ── Column visibility (user-customizable columns) ────────────────────────────
-const COL_VIS_KEY = 'hs-table-colVisibility';
-// Structural columns the user can't hide — the table needs them to function.
-const MANDATORY_COLS = new Set(['select', 'thumb', 'title', 'spacer', 'actions']);
-
-function loadColVisibility(): Record<string, boolean> {
-  try { const v = localStorage.getItem(COL_VIS_KEY); return v ? JSON.parse(v) : {}; } catch { return {}; }
-}
-function saveColVisibility(v: Record<string, boolean>) {
-  try { writeJson(COL_VIS_KEY, v); } catch { /* ignore */ }
-}
-
-/** Whether a column shows when the user hasn't explicitly toggled it. */
-function colDefaultVisible(id: string): boolean {
-  if (MANDATORY_COLS.has(id)) return true;
-  if (id === 'source') return true; // shown whenever the source column applies
-  return !BASE_COLS.find(c => c.id === id)?.defaultHidden;
-}
-
-/** Filename without path or model extension — for LoRA / LM / VAE cells. */
-function baseName(p?: string): string {
-  if (!p) return '';
-  const file = p.replace(/\\/g, '/').split('/').pop() || '';
-  return file.replace(/\.(safetensors|gguf|ckpt|pt|onnx|bin)$/i, '');
-}
-
-const SongTable: React.FC<SongTableProps> = ({
-  songs, currentSongId, isPlaying, selectionMode, selectedIds, onToggleSelect,
-  onPlay, onSelect, onShowDetails, onDelete, onReuse, onDownload, onRename, onSendToCover, showSourceBadge,
-  abTrackAId: _abTrackAId, abTrackBId: _abTrackBId, topRight,
-}) => {
-  const { t } = useTranslation();
-  const { isDisguised, disguiseTitle } = useDisguiseMode();
-
-  // Persisted per-column visibility (default visible). Mandatory cols ignore it.
-  const [colVisible, setColVisible] = useState<Record<string, boolean>>(() => loadColVisibility());
-  const [colMenuOpen, setColMenuOpen] = useState(false);
-  const isColVisible = (id: string) => MANDATORY_COLS.has(id) || (colVisible[id] ?? colDefaultVisible(id));
-  const toggleCol = (id: string) => setColVisible(prev => {
-    const cur = prev[id] ?? colDefaultVisible(id);
-    const next = { ...prev, [id]: !cur };
-    saveColVisibility(next);
-    return next;
-  });
-
-  // Columns the user can show/hide (Source only exists in the unfiltered view).
-  const toggleableCols = useMemo(() => {
-    const ids = BASE_COLS.filter(c => !MANDATORY_COLS.has(c.id)).map(c => ({ id: c.id, label: c.label }));
-    if (showSourceBadge) ids.splice(1, 0, { id: 'source', label: 'Source' }); // after Style
-    return ids;
-  }, [showSourceBadge]);
-
-  // Build column list based on current flags + visibility
-  const columns = useMemo(() => {
-    const cols: ColDef[] = [];
-    if (selectionMode) cols.push(SELECT_COL);
-    // Insert base cols, injecting source col after style if needed, and a
-    // flexible spacer just before actions so actions hugs the right edge.
-    for (const c of BASE_COLS) {
-      if (c.id === 'actions') cols.push(SPACER_COL);
-      if (!isColVisible(c.id)) continue;
-      cols.push(c);
-      if (c.id === 'style' && showSourceBadge && isColVisible('source')) cols.push(SOURCE_COL);
-    }
-    return cols;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectionMode, showSourceBadge, colVisible]);
-
-  // Persisted column widths
-  const [colWidths, setColWidths] = useState<Record<string, number>>(() => {
-    const saved = loadColWidths();
-    const merged: Record<string, number> = {};
-    for (const c of [...BASE_COLS, SOURCE_COL, SELECT_COL]) {
-      merged[c.id] = saved[c.id] ?? c.defaultW;
-    }
-    return merged;
-  });
-
-  const getW = (id: string) => colWidths[id] ?? BASE_COLS.find(c => c.id === id)?.defaultW ?? 80;
-
-  // Drag-resize handler
-  const handleResizeStart = useCallback((colId: string, minW: number, startX: number) => {
-    const startW = getW(colId);
-    const onMove = (e: MouseEvent) => {
-      const newW = Math.max(minW, startW + (e.clientX - startX));
-      setColWidths(prev => {
-        const next = { ...prev, [colId]: newW };
-        saveColWidths(next);
-        return next;
-      });
-    };
-    const onUp = () => {
-      document.removeEventListener('mousemove', onMove);
-      document.removeEventListener('mouseup', onUp);
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-    };
-    document.body.style.cursor = 'col-resize';
-    document.body.style.userSelect = 'none';
-    document.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseup', onUp);
-  }, [colWidths]);
-
-  const formatDuration = (val: string | number | undefined) => {
-    if (!val) return '--:--';
-    return typeof val === 'string' ? val : formatClock(val);
-  };
-
-  // Sum of fixed column widths (spacer is flexible, contributes nothing).
-  // Used as the table's min width so it scrolls once the fixed columns no
-  // longer fit; otherwise the table fills 100% and the spacer takes the slack.
-  const totalW = columns.reduce((s, c) => s + (c.id === 'spacer' ? 0 : getW(c.id)), 0);
-
-  return (
-    <div>
-      {/* Toolbar: Columns menu (left) + pagination / extras (right) */}
-      <div className="flex items-center justify-between gap-3 mb-2">
-        <div className="relative">
-          <button
-            onClick={() => setColMenuOpen(o => !o)}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-white/10 text-xs text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 hover:bg-white/5 transition-colors"
-            title="Choose columns"
-          >
-            <Columns3 size={13} /> Columns
-          </button>
-          {colMenuOpen && (
-            <>
-              <div className="fixed inset-0 z-40" onClick={() => setColMenuOpen(false)} />
-              <div className="absolute left-0 top-full mt-1 z-50 min-w-[180px] max-h-80 overflow-y-auto py-1 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-white/10 shadow-xl">
-                <div className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-400 dark:text-zinc-500">Show columns</div>
-                {toggleableCols.map(c => (
-                  <button
-                    key={c.id}
-                    onClick={() => toggleCol(c.id)}
-                    className="w-full flex items-center gap-2.5 px-3 py-1.5 text-xs text-zinc-700 dark:text-zinc-300 hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
-                  >
-                    {isColVisible(c.id)
-                      ? <CheckSquare size={14} className="text-pink-400 flex-shrink-0" />
-                      : <Square size={14} className="text-zinc-500 flex-shrink-0" />}
-                    {c.label}
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
-        </div>
-        {topRight && <div className="flex-shrink-0">{topRight}</div>}
-      </div>
-      <div className="overflow-x-auto rounded-xl border border-zinc-200 dark:border-white/5">
-      <table className="text-xs" style={{ tableLayout: 'fixed', width: '100%', minWidth: totalW }}>
-        <colgroup>
-          {columns.map(c => (
-            <col key={c.id} style={{ width: c.id === 'spacer' ? 'auto' : getW(c.id) }} />
-          ))}
-        </colgroup>
-        <thead>
-          <tr className="bg-zinc-100/80 dark:bg-zinc-800/80 text-zinc-500 text-left">
-            {columns.map(c => (
-              <th
-                key={c.id}
-                className={`relative px-2 py-2.5 font-semibold select-none ${
-                  c.align === 'center' ? 'text-center' : c.align === 'right' ? 'text-right' : ''
-                } ${
-                  // Actions is a frozen column — pinned to the right edge, always
-                  // visible regardless of how the other columns are sized/scrolled (#58).
-                  c.id === 'actions'
-                    ? 'sticky right-0 z-20 bg-zinc-100 dark:bg-zinc-800 border-l border-zinc-200 dark:border-white/10'
-                    : ''
-                }`}
-              >
-                {c.label}
-                {c.resizable && (
-                  <div
-                    className="absolute top-0 right-0 w-1.5 h-full cursor-col-resize z-10 group/resize hover:bg-pink-500/30"
-                    onMouseDown={(e) => { e.preventDefault(); handleResizeStart(c.id, c.minW, e.clientX); }}
-                  >
-                    <div className="w-px h-full mx-auto bg-zinc-300 dark:bg-zinc-600 group-hover/resize:bg-pink-400 transition-colors" />
-                  </div>
-                )}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {songs.map(song => {
-            const isActive = currentSongId === song.id;
-            const gp = song.generationParams || song.generation_params as any;
-            const { bpm, keyScale } = trackMetadata(song);
-            const model = song.dit_model || gp?.ditModel || '';
-            const modelShort = model ? model.split('/').pop()?.replace(/\.gguf$/, '').substring(0, 16) : '';
-            const src = (gp as any)?.source || 'create';
-            const badge = SOURCE_BADGE_MAP[src];
-            const loraName = baseName(gp?.loraPath);
-            const lmName = baseName(gp?.lmModel);
-            const vaeName = baseName(gp?.vaeModel);
-            const isMastered = !!(song.masteredAudioUrl || song.mastered_audio_url);
-
-            // Build cell map
-            const cells: Record<string, React.ReactNode> = {
-              select: selectionMode ? (
-                selectedIds.has(song.id)
-                  ? <CheckSquare size={15} className="text-pink-400" />
-                  : <Square size={15} className="text-zinc-600" />
-              ) : null,
-
-              thumb: (
-                <div className="relative w-8 h-8 rounded bg-zinc-100 dark:bg-zinc-800 overflow-hidden flex items-center justify-center">
-                  <CoverImage url={song.coverUrl || song.cover_url} seed={song.id} iconSize={12} />
-                  {!selectionMode && (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); if (isActive) togglePlay(); else onPlay(song); }}
-                      className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity"
-                    >
-                      {isActive && isPlaying
-                        ? <Pause size={10} className="text-white" />
-                        : <Play size={10} className="text-white ml-0.5" />
-                      }
-                    </button>
-                  )}
-                </div>
-              ),
-
-              title: <div className="min-w-0">
-                <TableTitleCell song={song} isActive={isActive} onRename={onRename ? (newTitle) => onRename(song, newTitle) : undefined} disguiseTitle={disguiseTitle} />
-                <SongParameterBadges song={song} />
-              </div>,
-              style: <TableStyleCell text={isDisguised ? '—' : (displaySubtext(song) || '—')} />,
-              source: badge ? <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded-full border ${badge.cls}`}>{badge.label}</span> : null,
-              bpm: <span className="text-zinc-500 font-mono">{bpm || '—'}</span>,
-              key: <span className="text-zinc-500">{keyScale || '—'}</span>,
-              model: <span className="text-violet-400/60 truncate block" title={model}>{modelShort || '—'}</span>,
-              quality: <QualityBadge song={song} />,
-              time: <span className="text-zinc-500 font-mono">{formatDuration(song.duration)}</span>,
-              date: <span className="text-zinc-600">{formatRelativeDay(song.created_at || song.createdAt)}</span>,
-              // ── Generation data (hidden by default) ──
-              seed: <span className="text-zinc-500 font-mono truncate block">{gp?.seed ?? '—'}</span>,
-              lmSeed: <span className="text-zinc-500 font-mono truncate block">{gp?.lmSeed ?? '—'}</span>,
-              steps: <span className="text-zinc-500 font-mono">{gp?.inferenceSteps ?? '—'}</span>,
-              cfg: <span className="text-zinc-500 font-mono">{gp?.guidanceScale ?? '—'}</span>,
-              shift: <span className="text-zinc-500 font-mono">{gp?.shift ?? '—'}</span>,
-              solver: <span className="text-zinc-500 truncate block" title={gp?.inferMethod || ''}>{gp?.inferMethod || '—'}</span>,
-              scheduler: <span className="text-zinc-500 truncate block" title={gp?.scheduler || ''}>{gp?.scheduler || '—'}</span>,
-              guidanceMode: <span className="text-zinc-500 truncate block" title={gp?.guidanceMode || ''}>{gp?.guidanceMode || '—'}</span>,
-              lora: <span className="text-zinc-500 truncate block" title={gp?.loraPath || ''}>{loraName || '—'}</span>,
-              loraScale: <span className="text-zinc-500 font-mono">{loraName && gp?.loraScale != null ? gp.loraScale : '—'}</span>,
-              lm: <span className="text-zinc-500 truncate block" title={gp?.lmModel || ''}>{lmName || '—'}</span>,
-              vae: <span className="text-zinc-500 truncate block" title={gp?.vaeModel || ''}>{vaeName || '—'}</span>,
-              timesig: <span className="text-zinc-500 font-mono">{gp?.timeSignature || song.time_signature || '—'}</span>,
-              lang: <span className="text-zinc-500">{gp?.vocalLanguage || '—'}</span>,
-              task: <span className="text-zinc-500 truncate block" title={gp?.taskType || ''}>{gp?.taskType || '—'}</span>,
-              instrumental: <span className="text-zinc-500">{gp?.instrumental ? 'Yes' : (gp?.instrumental === false ? 'No' : '—')}</span>,
-              mastered: isMastered ? <Check size={13} className="text-emerald-400 inline" /> : <span className="text-zinc-600">—</span>,
-              seedType: <span className="text-zinc-500">{gp?.randomSeed === true ? 'Random' : (gp?.randomSeed === false ? 'Fixed' : '—')}</span>,
-              lmSeedType: <span className="text-zinc-500">{gp?.lmSeedFollowsDit === true ? 'Tied to DiT' : (gp?.lmSeedFollowsDit === false ? 'Fixed' : '—')}</span>,
-              actions: (
-                <div className="flex items-center justify-end gap-0.5 flex-nowrap flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                  {onShowDetails && (
-                    <DetailsButton onClick={() => onShowDetails(song)} size={12}
-                      className="p-1 rounded text-zinc-500 hover:text-white hover:bg-white/10 transition-colors" />
-                  )}
-                  {/* Edit stays out here as the one-click action; everything
-                      else (download, send-to-cover, delete, A/B, and now
-                      post-processing) is on the shared menu. */}
-                  {onReuse && (
-                    <button onClick={(e) => { e.stopPropagation(); onReuse(song); }}
-                      className="p-1 rounded text-zinc-500 hover:text-white hover:bg-white/10 transition-colors" title={t('library.edit')}>
-                      <RotateCcw size={12} />
-                    </button>
-                  )}
-                  <SongActionsMenu
-                    song={song}
-                    size={13}
-                    className="!p-1"
-                    onDownload={onDownload ? () => onDownload(song) : undefined}
-                    onSendToCover={onSendToCover ? () => onSendToCover(song) : undefined}
-                    onDelete={() => onDelete(song)}
-                  />
-                </div>
-              ),
-            };
-
-            return (
-              <tr
-                key={song.id}
-                className={`group border-t border-zinc-100 dark:border-white/5 cursor-pointer transition-colors ${
-                  selectedIds.has(song.id) && selectionMode
-                    ? 'bg-pink-500/10'
-                    : isActive
-                      ? 'bg-pink-500/5'
-                      : 'hover:bg-white/5'
-                }`}
-                data-sel-id={song.id}
-                onClick={(e) => selectionMode ? onToggleSelect(song.id, e) : onSelect?.(song)}
-              >
-                {columns.map(c => (
-                  <td
-                    key={c.id}
-                    className={`px-2 py-2 overflow-hidden ${
-                      c.align === 'center' ? 'text-center' : c.align === 'right' ? 'text-right' : ''
-                    } ${
-                      // Frozen actions column — opaque bg (matches the transparent
-                      // default row) so scrolled cells slide cleanly underneath (#58).
-                      c.id === 'actions'
-                        ? 'sticky right-0 z-10 bg-white dark:bg-zinc-950 group-hover:bg-zinc-50 dark:group-hover:bg-zinc-900 border-l border-zinc-200 dark:border-white/10'
-                        : ''
-                    }`}
-                  >
-                    {cells[c.id]}
-                  </td>
-                ))}
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-      </div>
-    </div>
-  );
-};
-
-

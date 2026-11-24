@@ -24,6 +24,7 @@ import { DEFAULT_SETTINGS, type AppSettings } from '@/components/settings/Settin
 import { GLOBAL_PARAM_DEFAULTS, useGlobalParamsStore } from '@/stores/globalParamsStore';
 import type { AdapterFile } from '@/types';
 import { formatBytes, formatDecimal } from '@/utils/format/format';
+import { baseName } from '@/utils/paths/baseName';
 import { isPresent } from '@/utils/guards';
 
 // Select styling applied inline where needed
@@ -39,7 +40,7 @@ const GROUP_INFO = [
 
 function deriveTriggerWord(adapterPath: string): string {
   if (!adapterPath) return '';
-  const filename = adapterPath.split(/[\\/]/).pop() || '';
+  const filename = baseName(adapterPath);
   return filename.replace(/\.safetensors$/i, '');
 }
 
@@ -99,8 +100,8 @@ export const AdaptersDropdown: React.FC = () => {
   // Every stacked adapter contributes its trigger word (matches what is injected
   // into the caption server-side).
   const stackTriggerWords = stack.map(e => deriveTriggerWord(e.path)).filter(isPresent).join(', ');
-  const adapterFilename = gp.adapter ? gp.adapter.split(/[\\/]/).pop() || '' : '';
-  const fileLabel = (p: string) => p.split(/[\\/]/).pop() || p;
+  const adapterFilename = baseName(gp.adapter);
+  const fileLabel = (p: string) => baseName(p) || p;
 
   // Blend mode: per-adapter sliders are relative weights, normalised so the
   // effective scales sum to the combined-strength budget. effectiveScale maps a
@@ -785,7 +786,7 @@ export const AdaptersBadge: React.FC = () => {
   const { adapter, adapterScale, adapterStack, advancedAdapters } = useGlobalParams();
   const stack = adapterStack || [];
   const useStack = advancedAdapters && stack.length > 0;
-  const shortName = (p: string) => p.split(/[\\/]/).pop()?.replace(/\.safetensors$/i, '') || '';
+  const shortName = (p: string) => baseName(p);
 
   if (useStack) {
     const first = shortName(stack[0].path);

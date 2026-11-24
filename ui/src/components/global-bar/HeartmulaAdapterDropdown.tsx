@@ -8,8 +8,9 @@ import { ParamLabel } from '@/components/shared/controls/ParamLabel';
 import { StyledSelect } from '@/components/shared/controls/StyledSelect';
 import { BackendExtensionControls } from './BackendExtensionControls';
 import { isPresent } from '@/utils/guards';
+import { baseName } from '@/utils/paths/baseName';
 
-const fileName = (value: string) => value.split(/[\\/]/).pop() || value;
+const fileName = (value: string) => baseName(value) || value;
 
 export function HeartmulaAdapterDropdown() {
   const { t } = useTranslation();

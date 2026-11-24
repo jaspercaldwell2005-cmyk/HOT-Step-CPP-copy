@@ -17,6 +17,7 @@ import { StyledSelect } from '@/components/shared/controls/StyledSelect';
 import { Toggle } from '@/components/shared/controls/Toggle';
 import { QueryError } from '@/components/shared/feedback/QueryError';
 import { saveText } from '@/utils/storage/saveFile';
+import { copyText } from '@/utils/storage/clipboard';
 import { formatDecimal } from '@/utils/format/format';
 
 interface Props {
@@ -164,7 +165,7 @@ const AbcRow: React.FC<{ jobId: string }> = ({ jobId }) => {
   const { mutate: makeAbc, isPending: busy, error: abcError } = useMutation({
     mutationFn: async (action: 'copy' | 'save') => {
       const r = await getMidiAbc(jobId, { ins: ins >= 0 ? ins : undefined, melodyOnly: !chords });
-      if (action === 'copy') await navigator.clipboard.writeText(r.abc);
+      if (action === 'copy') await copyText(r.abc);
       else {
         saveText(r.abc, 'lead-sheet.abc', 'text/plain');
       }

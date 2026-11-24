@@ -22,6 +22,7 @@ import { queryManager } from '@/queries/invalidation';
 import { PIPELINE_STAGES, type PipelineItem, type PipelineStage, type PipelineSummary } from '@/services/trainingApi';
 import { useTrainingStore } from '@/stores/trainingStore';
 import { formatDayTime } from '@/utils/format/dateUtils';
+import { baseName } from '@/utils/paths/baseName';
 import { ConfirmDialog } from '@/components/shared/overlays/ConfirmDialog';
 import { PipelineStageProgress } from '@/components/training-studio/panels/PipelineStageProgress';
 import { CARD } from '@/components/training-studio/lib/yue2CardUi';
@@ -46,7 +47,7 @@ const CHIP_STYLE: Record<string, string> = {
 };
 
 function folderBasename(dir: string): string {
-  return dir.replace(/[\\/]+$/, '').split(/[\\/]/).pop() ?? dir;
+  return baseName(dir.replace(/[\\/]+$/, '')) || dir;
 }
 
 const PipelineItemRow: React.FC<{ item: PipelineItem; stages: PipelineStage[] }> = ({ item, stages }) => {

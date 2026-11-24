@@ -11,6 +11,7 @@ import { useSyncExternalStore } from 'react';
 import { skipThinking } from '@/services/lireekApi';
 import { lyricWorkflowApi, runLyricOperation, type LyricBatchRequest, type LyricBatchResult } from '@/services/lyricWorkflowApi';
 import type { WorkflowJob } from '../../../server/src/contracts/workflow';
+import { errorMessage } from '@/utils/format/errorMessage';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -175,7 +176,7 @@ async function _processQueue(): Promise<void> {
     try { await followQueueJob(job, expanded); }
     finally { _following.delete(job.id); }
   } catch (err) {
-    for (const item of pending) { item.status = 'error'; item.error = (err as Error).message; }
+    for (const item of pending) { item.status = 'error'; item.error = errorMessage(err); }
     _emit();
   } finally {
     _queueRunning = false;
@@ -257,7 +258,7 @@ export async function startStreamBuildProfile(
     await runLyricOperation({ type: 'profile', targetId: lyricsSetId, provider: req.provider, model: req.model },
       { onChunk: appendChunk, onPhase: setPhase, onResult: () => onComplete?.() });
   } catch (err) {
-    _state.text += `\n⚠ Error: ${(err as Error).message}`;
+    _state.text += `\n⚠ Error: ${errorMessage(err)}`;
     _emit();
     throw err;
   } finally {
@@ -276,7 +277,7 @@ export async function startStreamGenerate(
       extraInstructions: req.extra_instructions, userSubject: req.user_subject, noThink: req.no_think, count: req.count },
       { onChunk: appendChunk, onPhase: setPhase, onResult: () => onComplete?.() });
   } catch (err) {
-    _state.text += `\n⚠ Error: ${(err as Error).message}`;
+    _state.text += `\n⚠ Error: ${errorMessage(err)}`;
     _emit();
     throw err;
   } finally {
@@ -294,7 +295,7 @@ export async function startStreamRefine(
     await runLyricOperation({ type: 'refine', targetId: generationId, provider: req.provider, model: req.model },
       { onChunk: appendChunk, onPhase: setPhase, onResult: () => onComplete?.() });
   } catch (err) {
-    _state.text += `\n⚠ Error: ${(err as Error).message}`;
+    _state.text += `\n⚠ Error: ${errorMessage(err)}`;
     _emit();
     throw err;
   } finally {

@@ -18,11 +18,9 @@ import { formatClock } from '@/utils/format/format';
 import { QueryError } from '@/components/shared/feedback/QueryError';
 import { initialPair, normalizePair, setSlot, tapTake, toggleTarget, type AbPair } from './abPair';
 
-const mmss = (s: number) => formatClock(s);
-
 const TimeLabel: React.FC<{ engine: AbEngine; duration: number }> = ({ engine, duration }) => {
   const t = engine.useCurrentTime();
-  return <span className="font-mono text-xs text-zinc-500 tabular-nums">{mmss(t)} / {mmss(duration)}</span>;
+  return <span className="font-mono text-xs text-zinc-500 tabular-nums">{formatClock(t)} / {formatClock(duration)}</span>;
 };
 
 const SeekBar: React.FC<{ engine: AbEngine; duration: number }> = ({ engine, duration }) => {
@@ -186,7 +184,7 @@ export const SessionView: React.FC<Props> = ({ session, onBack }) => {
           <button className={btn} onClick={setOut}>{t('compare.loopOut', 'Out')}</button>
           {engine.loop && (
             <button className={`${btn} flex items-center gap-1`} onClick={() => engine.setLoop(null)}>
-              <X size={12} /> {t('compare.loopClear', 'Clear loop')} {mmss(engine.loop.start)}-{mmss(engine.loop.end)}
+              <X size={12} /> {t('compare.loopClear', 'Clear loop')} {formatClock(engine.loop.start)}-{formatClock(engine.loop.end)}
             </button>
           )}
           <span className="sm:hidden"><TimeLabel engine={engine} duration={duration} /></span>

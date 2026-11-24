@@ -17,8 +17,9 @@ import { readMedia } from '../services/mediaTransport';
 //   3. HI-HAT — shimmer → floating particles
 
 import { useSyncExternalStore, useRef, useCallback } from 'react';
-import { writeJson } from '@/utils/storage/storageJson';
+import { readJson, writeJson } from '@/utils/storage/storageJson';
 import { formatDecimal } from '@/utils/format/format';
+import { clamp01 } from '@/utils/format/clamp';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -45,11 +46,7 @@ interface DiscoData {
 const DISCO_PREFS_KEY = 'disco-prefs';
 
 function loadDiscoPrefs(): { discoMode: boolean } {
-  try {
-    const raw = localStorage.getItem(DISCO_PREFS_KEY);
-    if (raw) return JSON.parse(raw);
-  } catch { /* ignore */ }
-  return { discoMode: false };
+  return readJson(DISCO_PREFS_KEY, { discoMode: false });
 }
 
 function saveDiscoPrefs(discoMode: boolean): void {
@@ -267,7 +264,7 @@ function beatDetectionLoop(): void {
       _rollingMin = mid - FB_MIN_RANGE / 2;
       _rollingMax = mid + FB_MIN_RANGE / 2;
     }
-    const norm = Math.max(0, Math.min(1, (raw - _rollingMin) / (_rollingMax - _rollingMin)));
+    const norm = clamp01((raw - _rollingMin) / (_rollingMax - _rollingMin));
     if (norm > _kickPulse) _kickPulse += (norm - _kickPulse) * FB_ATTACK;
     else _kickPulse *= FB_DECAY;
   }

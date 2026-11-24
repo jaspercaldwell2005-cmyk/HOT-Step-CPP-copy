@@ -19,7 +19,7 @@ import { HintButton } from '@/components/shared/controls/HintButton';
 import { ParamLabel } from '@/components/shared/controls/ParamLabel';
 import { useIsMobile } from '@/components/shared/overlays/BottomSheet';
 import { FullScreenPlayer } from './FullScreenPlayer';
-import { formatClock } from '@/utils/format/format';
+import { formatTrackDuration } from '@/utils/format/trackDuration';
 
 interface PlayerProps {
   currentSong: Song | null;
@@ -60,7 +60,8 @@ interface PlayerProps {
   onExitABMode: () => void;
 }
 
-const formatTime = (s: number) => (!s || !isFinite(s) ? '0:00' : formatClock(s));
+/** `0:00` for a duration that is not loaded yet, `m:ss` once it is. */
+const formatTime = (s: number) => formatTrackDuration(s, '0:00');
 
 /** One segment of the playbar's variant switch: a label that selects the
  *  variant, plus an inline download icon that grabs that exact render.

@@ -24,6 +24,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useVstChainStore } from '@/stores/vstChainStore';
 import { ToggleSwitch } from './BarSection';
 import { formatReferenceName } from './modelLabels';
+import { baseName } from '@/utils/paths/baseName';
 import { VstChainDropdown } from './VstChainDropdown';
 import { useCapabilities } from '@/hooks/useCapabilities';
 import { CoverArtContent, CoverArtBadge } from './CoverArtDropdown';
@@ -163,7 +164,7 @@ const MasteringContent: React.FC<{ timbreOk: boolean }> = ({ timbreOk }) => {
         gp.timbreAudioPath ? (
           <div className="flex items-center gap-1.5 mt-1 px-2 py-1.5 rounded-lg bg-teal-500/5 border border-teal-500/10">
             <Music2 size={14} className="text-teal-400" />
-            <span className="text-[10px] text-teal-400">Timbre: using dedicated reference ({gp.timbreAudioPath.split(/[\\/]/).pop()})</span>
+            <span className="text-[10px] text-teal-400">Timbre: using dedicated reference ({baseName(gp.timbreAudioPath)})</span>
           </div>
         ) : (
           <div className="flex items-center justify-between mt-1">

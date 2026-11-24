@@ -12,6 +12,7 @@ import { useTranslation } from 'react-i18next';
 import { ParamLabel } from '@/components/shared/controls/ParamLabel';
 import { StyledSelect } from '@/components/shared/controls/StyledSelect';
 import { Toggle } from '@/components/shared/controls/Toggle';
+import { clamp01 } from '@/utils/format/clamp';
 import type {
   LmSize,
   TrainLmStage,
@@ -481,7 +482,7 @@ export const TrainLmForm: React.FC<Props> = ({
             type="number" min={0} max={100} step={1}
             value={Math.round(value.captionDropout * 100)}
             disabled={lock}
-            onChange={(e) => onChange({ captionDropout: Math.min(1, Math.max(0, num(e.target.value, 0) / 100)) })}
+            onChange={(e) => onChange({ captionDropout: clamp01(num(e.target.value, 0) / 100) })}
             className={FIELD}
           />
         </label>

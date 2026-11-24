@@ -13,7 +13,8 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Play, Pause, Square, Volume2, VolumeX, X } from 'lucide-react';
-import { formatClock } from '@/utils/format/format';
+import { formatTrackDuration } from '@/utils/format/trackDuration';
+import { clamp01 } from '@/utils/format/clamp';
 
 interface PreviewPlayerProps {
   sourceUrl: string;
@@ -123,7 +124,7 @@ export const PreviewPlayer: React.FC<PreviewPlayerProps> = ({
   const handleSeek = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     if (!duration) return;
     const rect = e.currentTarget.getBoundingClientRect();
-    const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    const pct = clamp01((e.clientX - rect.left) / rect.width);
     const t = pct * duration;
 
     if (sourceRef.current) sourceRef.current.currentTime = t;
@@ -131,7 +132,7 @@ export const PreviewPlayer: React.FC<PreviewPlayerProps> = ({
     setCurrentTime(t);
   }, [duration]);
 
-  const formatTime = (s: number) => formatClock(s);
+  const formatTime = (s: number) => formatTrackDuration(s);
 
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 

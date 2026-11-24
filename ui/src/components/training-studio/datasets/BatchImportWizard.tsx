@@ -24,6 +24,7 @@ import { ParamLabel } from '@/components/shared/controls/ParamLabel';
 import { StyledSelect } from '@/components/shared/controls/StyledSelect';
 import { Toggle } from '@/components/shared/controls/Toggle';
 import { useLabelSteps } from '@/components/training-studio/hooks/useLabelSteps';
+import { baseName } from '@/utils/paths/baseName';
 
 interface FolderRow {
   path: string;
@@ -64,7 +65,7 @@ function defaultStages(): Record<PipelineStage, boolean> {
 }
 
 function basename(dir: string): string {
-  return dir.replace(/[\\/]+$/, '').split(/[\\/]/).pop() ?? dir;
+  return baseName(dir.replace(/[\\/]+$/, '')) || dir;
 }
 
 interface BatchImportWizardProps {

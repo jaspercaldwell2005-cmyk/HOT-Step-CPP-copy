@@ -28,6 +28,7 @@ import type { BuilderProject, BuilderSection, BuilderDirection } from '@/service
 import { ApiError, HttpStatus } from '@/services/apiError';
 import { followSection as followSectionJob } from './followSection';
 import { useBackendStore } from '@/stores/backendStore';
+import { errorMessage } from '@/utils/format/errorMessage';
 import { getGenerationTimeoutMinutes } from '@/utils/audio/generationTimer';
 import { play, playFromList, togglePlay, usePlaybackSelector, songToTrack } from '@/stores/playbackStore';
 import type { Song } from '@/types';
@@ -276,7 +277,7 @@ export const SongBuilder: React.FC = () => {
       // Reopened while a section was rendering: pick its job back up.
       const running = secs.find(s => s.status === 'generating' && s.job_id);
       if (running?.job_id) followSection(p.id, running.job_id);
-    } catch (e: any) { showToast(`Failed to open: ${e.message}`); }
+    } catch (e) { showToast(`Failed to open: ${errorMessage(e)}`); }
     finally { setLoading(false); }
   }, [token, followSection]);
 
@@ -473,12 +474,12 @@ export const SongBuilder: React.FC = () => {
     },
     onMutate: () => { setIsGenerating(true); setGenProgress(0); setGenStage('Queued…'); },
     onSuccess: (v, { projectId }) => { applyView(v); followSection(projectId, v.jobId); },
-    onError: async (e: any) => {
+    onError: async (e) => {
       setIsGenerating(false); setGenStage('');
       if (e instanceof ApiError && e.status === HttpStatus.conflict) {
-        showToast(`${e.message} Reloaded.`);
+        showToast(`${errorMessage(e)} Reloaded.`);
         await refresh().catch(() => {});
-      } else showToast(`Generation failed: ${e.message}`);
+      } else showToast(`Generation failed: ${errorMessage(e)}`);
     },
   });
   const handleGenerate = () => {

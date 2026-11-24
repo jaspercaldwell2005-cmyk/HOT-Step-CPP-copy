@@ -453,7 +453,7 @@ export const TrainingChart: React.FC<Props> = ({
           style={{ left: padL, right: padR }}
           onMouseMove={(ev) => {
             const r = ev.currentTarget.getBoundingClientRect();
-            if (r.width > 0) setHoverFrac(Math.min(1, Math.max(0, (ev.clientX - r.left) / r.width)));
+            if (r.width > 0) setHoverFrac(clamp01((ev.clientX - r.left) / r.width));
           }}
           onMouseLeave={() => setHoverFrac(null)}
         >
